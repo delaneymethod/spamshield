@@ -12,6 +12,22 @@
 return [
     // --- Legit submissions (should PASS) ---
     [
+        'label' => 'Legit but no message',
+        'payload' => [
+            'firstname' => 'Cat',
+            'lastname' => 'Cole',
+            'email' => 'cat.astrophe207@gmail.com',
+            'custom_field_1' => 'Test 1',
+            'custom_field_2' => 'Test 2',
+            'custom_field_3' => 'Test 3',
+        ],
+        'meta' => [
+            'require_message' => false,
+        ],
+        'expect' => 'ham',
+        'why' => 'Looks human.',
+    ],
+    [
         'label' => 'Legit US enquiry with part number',
         'payload' => [
             'full_name' => 'Jose Davidi',

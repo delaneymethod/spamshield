@@ -76,8 +76,19 @@ final class SpamShield
         $score = 0;
         $reasons = [];
 
+        // Gibberish
+        $gibberishHits = 0;
+
+        foreach ($payload as $value) {
+            $value = \trim($value);
+
+            if ($value !== '' && $this->isGibberish($value)) {
+                $gibberishHits++;
+            }
+        }
+
         // Email sanity
-        $email = \trim($payload['email_address']);
+        $email = \trim($payload['email_address'] ?? '');
 
         if ($email !== '') {
             $email = \strtolower($email);
@@ -115,7 +126,7 @@ final class SpamShield
         }
 
         // Message sanity
-        $message = \trim($payload['message']);
+        $message = \trim($payload['message'] ?? '');
 
         if ($message !== '') {
             $hash = \hash('sha256', $this->normalize($message));
@@ -190,6 +201,8 @@ final class SpamShield
                 $reasons[] = 'spammy_link_combo';
             }
 
+            $gibberishHits += $this->gibberishHitsFromValue($message);
+
             // remember content hash for repetition window
             $this->getStore()->remember('content_hash', $hash, self::RECENT_WINDOW_SECONDS);
         } else {
@@ -200,33 +213,8 @@ final class SpamShield
             }
         }
 
-        // Gibberish fields: full name, company, postal code and message
-        $gibberishHits = 0;
-
-        foreach (['full_name', 'company_name', 'postal_code'] as $key) {
-            $value = \trim($payload[$key]);
-
-            if ($value !== '' && $this->isGibberish($value)) {
-                $gibberishHits++;
-            }
-        }
-
-        $gibberishHits += $this->gibberishHitsFromValue($message);
-
-        if ($gibberishHits >= 1) {
-            $score += 2;
-
-            $reasons[] = 'gibberish_fields';
-        }
-
-        if ($gibberishHits >= 3) {
-            $score += 3;
-
-            $reasons[] = 'multiple_gibberish_fields';
-        }
-
         // Telephone number sanity
-        $phone = \trim($payload['telephone_number']);
+        $phone = \trim($payload['telephone_number'] ?? '');
 
         if ($phone !== '') {
             $digits = \preg_replace('/\D+/', '', $phone);
@@ -247,7 +235,7 @@ final class SpamShield
         }
 
         // Postal code sanity (UK-ish heuristic)
-        $postcode = \trim($payload['postal_code']);
+        $postcode = \trim($payload['postal_code'] ?? '');
 
         if ($postcode !== '') {
             if (\mb_strlen($postcode) > self::MAXIMUM_FIELD_LENGTH) {
@@ -266,8 +254,26 @@ final class SpamShield
             }
         }
 
+        if ($gibberishHits >= 1) {
+            $score += 4;
+
+            $reasons[] = 'gibberish_fields';
+        }
+
+        if ($gibberishHits >= 2) {
+            $score += 6;
+
+            $reasons[] = 'gibberish_fields';
+        }
+
+        if ($gibberishHits >= 3) {
+            $score += 7;
+
+            $reasons[] = 'multiple_gibberish_fields';
+        }
+
         // DNS Block List
-        $ip = (string)($meta['ip'] ?? '');
+        $ip = \trim($meta['ip'] ?? '');
 
         if ($ip !== '' && ! $skipDnsBlockList && $this->listedOnDnsBlockList($ip)) {
             $score += 3;
@@ -639,46 +645,140 @@ final class SpamShield
     }
 
     /**
-     * @param array<string, mixed> $values
-     * @return array{
-     *   full_name: string,
-     *   email_address: string,
-     *   telephone_number: string,
-     *   postal_code: string,
-     *   message: string,
-     *   company_name: string
-     * }
+     * Build a normalized payload from the submitted form values ONLY.
+     * - Include a canonical field if (and only if) an alias for it WAS POSTED, even if the value is empty.
+     * - Suppress raw alias fields from passthrough when they fed a canonical.
+     *
+     * @param array<string,mixed> $values
+     * @param array<string,string> $overrides Optional canonicalKey => exact original key to force
+     * @return array<string,string>
      */
-    public function buildPayloadFromFieldValues(array $values): array
+    public function buildPayloadFromFieldValues(array $values, array $overrides = []): array
     {
-        /**
-         * @param array<int,string> $handles
-         */
-        $get = function (array $handles) use ($values) {
-            foreach ($handles as $handle) {
-                if (\array_key_exists($handle, $values) && $values[$handle] !== '') {
-                    return \trim((string) $values[$handle]);
+        // 1) Normalize submitted values (trim + stringify arrays)
+        $submitted = [];
+
+        foreach ($values as $key => $value) {
+            if (is_array($value)) {
+                $value = implode(', ', array_map('strval', array_filter($value, fn($x) => $x !== null && $x !== '')));
+            }
+
+            $submitted[$key] = trim((string) $value);
+        }
+
+        // 2) Alias groups (matching only)
+        $aliasGroups = [
+            'full_name' => ['fullname', 'full_name', 'full-name', 'contactname', 'contact_name', 'contact-name', 'name'],
+            'first_name' => ['firstname', 'first_name', 'first-name', 'fname', 'first'],
+            'last_name' => ['lastname', 'last_name', 'last-name', 'lname', 'last', 'surname'],
+            'email_address' => ['email', 'email_address', 'email-address', 'emailaddress', 'mail'],
+            'telephone_number' => ['phone', 'phone_number', 'phone-number', 'phonenumber', 'telephone', 'tel', 'mobile', 'cell', 'cellphone'],
+            'street_address_1' => ['street_address_1', 'streetaddress1', 'street-address-1', 'street-address1', 'street-address', 'streetaddress', 'street_address', 'address1', 'address'],
+            'street_address_2' => ['street_address_2', 'streetaddress2', 'street-address-2', 'street-address2', 'address2', 'address_line_2', 'addressline2'],
+            'town_city' => ['town_city', 'towncity', 'town', 'city'],
+            'state_region' => ['state_region', 'stateregion', 'state', 'region', 'county', 'province'],
+            'postal_code' => ['postal_code', 'postcode', 'post_code', 'zip', 'zip_code', 'zipcode', 'zippostalcode', 'zip_postal_code', 'zip-postal-code', 'company_zip_code', 'companyzipcode'],
+            'country' => ['country'],
+            'message' => ['how_can_we_help', 'how_can_we_help_you', 'commentsquestions', 'comments_questions', 'comments-questions', 'description', 'comments', 'message', 'enquiry', 'inquiry', 'details', 'notes', 'special_instructions', 'additionaldetails', 'question', 'questions', 'scope', 'brief', 'content', 'how_did_you_hear_about_us', 'how-did-you-hear-about-us', 'howdidyouhearaboutus'],
+            'company_name' => ['company_name', 'company-name', 'company', 'organisation', 'organization', 'org', 'business', 'employer'],
+        ];
+
+        $normalized = static fn(string $key): string => preg_replace('/[^a-z0-9]+/i', '', mb_strtolower($key)) ?? $key;
+
+        // Build normalized-key => original-key map for submitted fields
+        $normalizedMap = [];
+
+        foreach ($submitted as $key => $_) {
+            $normalizedKey = $normalized($key);
+
+            if (!isset($normalizedMap[$normalizedKey])) {
+                $normalizedMap[$normalizedKey] = $key;
+            }
+        }
+
+        // Helper: did the request POST any alias for this canonical?
+        $hasAlias = function (array $aliases) use ($normalizedMap, $normalized): bool {
+            foreach ($aliases as $alias) {
+                if (isset($normalizedMap[$normalized($alias)])) {
+                    return true;
+                }
+            }
+
+            return false;
+        };
+
+        // Helper: fetch first non-empty value among aliases (or a specific override key)
+        $consumed = [];
+
+        $getByAliases = function (array $aliases, ?string $overrideKey = null) use ($submitted, $normalizedMap, $normalized, &$consumed): string {
+            if ($overrideKey && array_key_exists($overrideKey, $submitted)) {
+                $consumed[$overrideKey] = true;
+
+                return (string) $submitted[$overrideKey]; // may be empty
+            }
+
+            foreach ($aliases as $alias) {
+                $n = $normalized($alias);
+
+                if (isset($normalizedMap[$n])) {
+                    $orig = $normalizedMap[$n];
+                    $consumed[$orig] = true;
+
+                    return (string) ($submitted[$orig] ?? ''); // may be empty
                 }
             }
 
             return '';
         };
 
-        $fullName = $get(['fullname', 'fullName', 'full_name', 'full-name', 'contactname', 'contactName', 'contact_name', 'contact-name', 'name']);
+        // Index of ALL alias names (to suppress passthrough)
+        $aliasIndex = [];
 
-        if ($fullName === '') {
-            $first = $get(['firstname', 'firstName', 'first_name', 'first-name', 'fname', 'first']);
-            $last = $get(['lastname', 'lastName', 'last_name', 'last-name', 'lname', 'last', 'surname']);
-            $fullName = \trim($first . ' ' . $last);
+        foreach ($aliasGroups as $aliases) {
+            foreach ($aliases as $a) {
+                $aliasIndex[$normalized($a)] = true;
+            }
         }
 
-        return [
-            'full_name' => $fullName,
-            'email_address' => $get(['email', 'emailAddress', 'email_address', 'email-address', 'mail']),
-            'telephone_number' => $get(['phone', 'phoneNumber', 'phone_number', 'phone-number', 'telephone', 'tel']),
-            'postal_code' => $get(['company_zip_code', 'companyZipCode', 'postcode', 'postCode', 'post_code', 'post-code', 'postalcode', 'postalCode', 'postal_code', 'postal-code', 'zippostalcode', 'zipPostalCode', 'zip_postal_code', 'zip-postal-code', 'zipcode', 'zipCode', 'zip_code', 'zip-code', 'zip']),
-            'message' => $get(['how_can_we_help', 'howCanWeHelp', 'how_can_we_help_you', 'howCanWeHelpYou', 'commentsquestions', 'commentsQuestions', 'comments_questions', 'comments-questions', 'description', 'comments', 'message', 'enquiry', 'inquiry', 'details', 'notes']),
-            'company_name' => $get(['company_name', 'companyName', 'company-name', 'company', 'organisation', 'organization', 'org']),
-        ];
+        $result = [];
+
+        // 3) full_name: include if a direct alias was POSTed OR if any first/last alias was POSTed
+        $fullNameIncluded = $hasAlias($aliasGroups['full_name']) || $hasAlias($aliasGroups['first_name']) || $hasAlias($aliasGroups['last_name']);
+        if ($fullNameIncluded) {
+            // prefer direct alias; else compose from first+last (values may be empty if they were posted empty)
+            $result['full_name'] = $getByAliases($aliasGroups['full_name']) ?: trim($getByAliases($aliasGroups['first_name']) . ' ' . $getByAliases($aliasGroups['last_name']));
+        }
+
+        // 4) Other canonicals: include if an alias was POSTed (values may be empty if they were posted empty)
+        $canonicalKeys = ['email_address', 'telephone_number', 'street_address_1', 'street_address_2', 'town_city', 'state_region', 'postal_code', 'country', 'message', 'company_name'];
+        foreach ($canonicalKeys as $canonicalKey) {
+            if ($hasAlias($aliasGroups[$canonicalKey])) {
+                $result[$canonicalKey] = $getByAliases($aliasGroups[$canonicalKey], $overrides[$canonicalKey] ?? null);
+            }
+        }
+
+        // 5) Passthrough: any other non-empty submitted fields that aren’t aliases and weren’t consumed
+        foreach ($submitted as $key => $value) {
+            if ($value === '') {
+                continue;
+            }
+
+            if (isset($consumed[$key])) {
+                continue;
+            }
+
+            // don’t leak alias fields
+            if (isset($aliasIndex[$normalized($key)])) {
+                continue;
+            }
+
+            if (array_key_exists($key, $result)) {
+                continue;
+            }
+
+            $result[$key] = $value;
+        }
+
+        return $result;
     }
 }
