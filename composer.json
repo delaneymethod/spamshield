@@ -1,0 +1,66 @@
+{
+  "name": "delaneymethod/spamshield",
+  "description": "Lightweight, pluggable spam scoring for PHP forms. Works with Craft, ExpressionEngine, Laravel, or vanilla PHP.",
+  "type": "library",
+  "license": "MIT",
+  "version": "1.0.0",
+  "keywords": [
+    "spam shield",
+    "spam scoring"
+  ],
+  "authors": [
+    {
+      "name": "Sean Delaney",
+      "email": "hello@delaneymethod.com"
+    }
+  ],
+  "support": {
+    "docs": "https://github.com/delaneymethod/spamshield/blob/main/README.md",
+    "issues": "https://github.com/delaneymethod/spamshield/main/issues"
+  },
+  "scripts": {
+    "lint": [
+      "@lint:php",
+      "@lint:style"
+    ],
+    "lint:php": "find src tests -name '*.php' -print0 | xargs -0 -n1 -P4 php -l",
+    "lint:style": "phpcs",
+    "fix": "php-cs-fixer fix --config=.php-cs-fixer.dist.php",
+    "analyse": "phpstan analyse",
+    "test": "phpunit --configuration phpunit.xml",
+    "ci": [
+      "@lint",
+      "@analyse",
+      "@test"
+    ]
+  },
+  "require": {
+    "php": "^8.1",
+    "ext-mbstring": "*",
+    "ext-apcu": "*"
+  },
+  "suggest": {
+  },
+  "autoload": {
+    "psr-4": {
+      "delaneymethod\\spamshield\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "delaneymethod\\spamshield\\tests\\": "tests/"
+    }
+  },
+  "require-dev": {
+    "friendsofphp/php-cs-fixer": "^3",
+    "php-parallel-lint/php-parallel-lint": "^1",
+    "phpstan/phpstan": "^1",
+    "phpunit/phpunit": "^9.6",
+    "squizlabs/php_codesniffer": "^3"
+  },
+  "minimum-stability": "dev",
+  "prefer-stable": true,
+  "config": {
+    "sort-packages": true
+  }
+}

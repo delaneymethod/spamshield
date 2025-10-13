@@ -1,0 +1,684 @@
+<?php
+
+/**
+ * SpamShield
+ * (c) 2025 Sean Delaney
+ * SPDX-License-Identifier: MIT
+ *
+ * This file is part of the delaneymethod/spamshield package.
+ * See the LICENSE file in the project root for license details.
+ */
+
+declare(strict_types=1);
+
+namespace delaneymethod\spamshield;
+
+use delaneymethod\spamshield\stores\NullStore;
+use delaneymethod\spamshield\stores\SessionStore;
+use delaneymethod\spamshield\stores\SpamStoreInterface;
+
+final class SpamShield
+{
+    private const THRESHOLD = 7; // final spam cutoff
+
+    private const MINIMUM_MESSAGE_CHARACTERS = 25;
+    private const MINIMUM_MESSAGE_WORDS = 4;
+
+    private const MAXIMUM_FIELD_LENGTH = 200;
+
+    private const GIBBERISH_WORD_LENGTH = 6;
+
+    private const RECENT_WINDOW_SECONDS = 43200; // 12 hours
+
+    private SpamStoreInterface $store;
+
+    /** @var array<int, string> */
+    private array $allowedValues = [];
+
+    /** @var array<int, string> */
+    private array $disposableDomains = ['mailinator.com', 'tempmail.com', '10minutemail.com', 'guerrillamail.com', 'trashmail.com', 'yopmail.com', 'sharklasers.com'];
+
+    /** @var array<int, string> */
+    private array $dnsBlockLists = ['zen.spamhaus.org', 'bl.spamcop.net'];
+
+    /** @var array<int, string> */
+    private array $suspectTopLevelDomains = ['top', 'xyz', 'click', 'icu', 'shop', 'link', 'today', 'win', 'live'];
+
+    /** @var array<int, string> */
+    private array $spamTerms = [
+        'dofollow', 'backlinks', 'guest post', 'guestpost', 'sponsored post', 'link insertion',
+        'seo package', 'casino', 'crypto', 'viagra', 'loan', 'telegram', 'whatsapp', 'adult',
+        'brand mention', 'dripfeed', 'outreach', 'high da', 'high-da', 'guest blogging',
+    ];
+
+    /** @var array<int, string> */
+    private array $phishingTerms = [
+        'verify your account', 'confirm your account', 'reset your password', 'password reset',
+        'login to your account', 'log in to your account', 'update your account', 'account verification',
+        'account suspended', 'verify here', 'confirm here', 'billing update', 'payment details',
+    ];
+
+    /**
+     * @param array<string, mixed> $payload
+     * @param array<string, mixed> $meta
+     * @return array{score:int, reasons:array<int,string>, is_spam:bool}
+     */
+    public function score(array $payload, array $meta = []): array
+    {
+        $requireMessage = $meta['require_message'] ?? false;
+        $skipDnsBlockList = (bool) ($meta['skip_dns_block_list'] ?? false);
+        $skipMxRecordCheck = (bool) ($meta['skip_mx_record_check'] ?? false);
+        $minimumWords = (int) ($meta['minimum_message_words'] ?? self::MINIMUM_MESSAGE_WORDS);
+        $minimumCharacters = (int) ($meta['minimum_message_characters'] ?? self::MINIMUM_MESSAGE_CHARACTERS);
+
+        $payload = $this->buildPayloadFromFieldValues($payload);
+
+        $score = 0;
+        $reasons = [];
+
+        // Email sanity
+        $email = \trim($payload['email_address']);
+
+        if ($email !== '') {
+            $email = \strtolower($email);
+
+            if (! \filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                $score += 2;
+
+                $reasons[] = 'bad_email_format';
+            }
+
+            if (! $skipMxRecordCheck && ! $this->emailHasMXRecord($email)) {
+                $score += 2;
+
+                $reasons[] = 'no_mx_record';
+            }
+
+            if ($this->isDisposable($email)) {
+                $score += 7;
+
+                $reasons[] = 'disposable_email';
+            }
+
+            if ($this->suspectTopLevelDomains($email)) {
+                $score += 2;
+
+                $reasons[] = 'suspect_tld';
+            }
+
+            // repeated email within time frame
+            if ($this->getStore()->seenRecently('email', $email, self::RECENT_WINDOW_SECONDS)) {
+                $score += 3;
+
+                $reasons[] = 'repeat_email';
+            }
+        }
+
+        // Message sanity
+        $message = \trim($payload['message']);
+
+        if ($message !== '') {
+            $hash = \hash('sha256', $this->normalize($message));
+
+            if ($this->getStore()->seenRecently('content_hash', $hash, self::RECENT_WINDOW_SECONDS)) {
+                $score += 7;
+
+                $reasons[] = 'repeated_content';
+            }
+
+            $messageLength = \mb_strlen($message);
+            $wordCount = \preg_match_all('/\p{L}+/u', $message, $tmp);
+
+            if ($messageLength < $minimumCharacters) {
+                $score += 2;
+
+                $reasons[] = 'short_message';
+            }
+
+            if ($wordCount < $minimumWords) {
+                $score += 1;
+
+                $reasons[] = 'low_word_count';
+            }
+
+            if (! $this->looksLikeASentence($message)) {
+                $score += 1;
+
+                $reasons[] = 'no_sentence_like_content';
+            }
+
+            $urlCount = $this->urlCount($message);
+            $containsSpamTerms = $this->containsSpamTerms($message);
+            $containsPhishTerms = $this->containsAnyPhrase($message, $this->phishingTerms);
+
+            // URLs: keep single-link light, multi-link heavier
+            if ($urlCount >= 1) {
+                $score += 1;
+
+                $reasons[] = 'contains_url';
+            }
+
+            if ($urlCount >= 2) {
+                $score += 1;
+
+                $reasons[] = 'multiple_urls';
+            }
+
+            // Language signals
+            if ($containsSpamTerms) {
+                $score += 2;
+
+                $reasons[] = 'spammy_language';
+            }
+
+            if ($containsPhishTerms) {
+                $score += 5;
+
+                $reasons[] = 'phishing_language';
+            }
+
+            // Optional combo nudges (kept; small)
+            if ($containsSpamTerms && $urlCount >= 1) {
+                $score += 1;
+
+                $reasons[] = 'spammy_link_combo';
+            }
+
+            if ($containsPhishTerms && $urlCount >= 1) {
+                $score += 1;
+
+                $reasons[] = 'spammy_link_combo';
+            }
+
+            // remember content hash for repetition window
+            $this->getStore()->remember('content_hash', $hash, self::RECENT_WINDOW_SECONDS);
+        } else {
+            if ($requireMessage) {
+                $score += 7;
+
+                $reasons[] = 'empty_message';
+            }
+        }
+
+        // Gibberish fields: full name, company, postal code and message
+        $gibberishHits = 0;
+
+        foreach (['full_name', 'company_name', 'postal_code'] as $key) {
+            $value = \trim($payload[$key]);
+
+            if ($value !== '' && $this->isGibberish($value)) {
+                $gibberishHits++;
+            }
+        }
+
+        $gibberishHits += $this->gibberishHitsFromValue($message);
+
+        if ($gibberishHits >= 1) {
+            $score += 2;
+
+            $reasons[] = 'gibberish_fields';
+        }
+
+        if ($gibberishHits >= 3) {
+            $score += 3;
+
+            $reasons[] = 'multiple_gibberish_fields';
+        }
+
+        // Telephone number sanity
+        $phone = \trim($payload['telephone_number']);
+
+        if ($phone !== '') {
+            $digits = \preg_replace('/\D+/', '', $phone);
+            $isUS = (bool) \preg_match('/^(1)?\d{10}$/', $digits);
+            $isUK = (bool) \preg_match('/^(44)?7\d{9}$|^07\d{9}$/', $digits);
+
+            if (! ($isUS || $isUK)) {
+                $score += 2;
+
+                $reasons[] = 'invalid_telephone_number';
+            }
+
+            if ($this->obviouslyFakePhone($phone)) {
+                $score += 2;
+
+                $reasons[] = 'fake_phone_pattern';
+            }
+        }
+
+        // Postal code sanity (UK-ish heuristic)
+        $postcode = \trim($payload['postal_code']);
+
+        if ($postcode !== '') {
+            if (\mb_strlen($postcode) > self::MAXIMUM_FIELD_LENGTH) {
+                $score += 1;
+
+                $reasons[] = 'field_too_long';
+            }
+
+            $trimmed = \strtoupper(\preg_replace('/\s+/', '', $postcode));
+            $ukOk = \preg_match('/^[A-Z]{1,2}\d[A-Z\d]?\d[A-Z]{2}$/', $trimmed);
+
+            if (! $ukOk && $this->isGibberish($postcode)) {
+                $score += 2;
+
+                $reasons[] = 'bad_postal_code';
+            }
+        }
+
+        // DNS Block List
+        $ip = (string)($meta['ip'] ?? '');
+
+        if ($ip !== '' && ! $skipDnsBlockList && $this->listedOnDnsBlockList($ip)) {
+            $score += 3;
+
+            $reasons[] = 'dns_blocklist_listed';
+        }
+
+        // remember email for repetition checks next time
+        if ($email !== '') {
+            $this->getStore()->remember('email', $email, self::RECENT_WINDOW_SECONDS);
+        }
+
+        return [
+            'score' => $score,
+            'reasons' => $reasons,
+            'is_spam' => $score >= self::THRESHOLD,
+        ];
+    }
+
+    /**
+     * @param array<int, string> $allowedValues
+     */
+    public function setAllowedValues(array $allowedValues): void
+    {
+        $this->allowedValues = $allowedValues;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public function getAllowedValues(): array
+    {
+        return $this->allowedValues;
+    }
+
+    public function setStore(SpamStoreInterface $store): void
+    {
+        $this->store = $store;
+    }
+
+    public function getStore(): SpamStoreInterface
+    {
+        if (! isset($this->store)) {
+            if (PHP_SAPI !== 'cli' && \session_status() !== PHP_SESSION_ACTIVE) {
+                @\session_start();
+            }
+
+            $this->store = (\session_status() === PHP_SESSION_ACTIVE) ? new SessionStore() : new NullStore();
+        }
+
+        return $this->store;
+    }
+
+    public function urlCount(string $value): int
+    {
+        /** @var array{0: array<int, string>} $matches */
+        $matches = [];
+        \preg_match_all('~https?://\S+|www\.\S+~i', $value, $matches);
+
+        return \count($matches[0]); // offset 0 always set by preg_match_all
+    }
+
+    /**
+     * @param array<int, string> $phrases
+     */
+    public function containsAnyPhrase(string $value, array $phrases): bool
+    {
+        $value = \mb_strtolower($value);
+
+        foreach ($phrases as $phrase) {
+            if (\str_contains($value, \mb_strtolower($phrase))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function containsSpamTerms(string $value): bool
+    {
+        $value = \mb_strtolower($value);
+
+        foreach ($this->spamTerms as $spamTerm) {
+            if (\str_contains($value, $spamTerm)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function suspectTopLevelDomains(string $email): bool
+    {
+        $at = \strrpos($email, '@');
+
+        if ($at === false) {
+            return false;
+        }
+
+        $domain = \strtolower(\substr($email, $at + 1));
+
+        if ($domain === '') {
+            return false;
+        }
+
+        $parts = \explode('.', $domain); // array<int,string>
+        $tld = \end($parts);
+
+        if ($tld == false) {
+            return false;
+        }
+
+        return \in_array($tld, $this->suspectTopLevelDomains, true);
+    }
+
+    public function obviouslyFakePhone(string $raw): bool
+    {
+        $digits = \preg_replace('/\D+/', '', $raw);
+
+        if ($digits === '') {
+            return false;
+        }
+
+        // same digit 7+
+        if (\preg_match('/^(.)\1{6,}$/', $digits)) {
+            return true;
+        }
+
+        // many zeros
+        if (\preg_match('/^0{6,}$/', $digits)) {
+            return true;
+        }
+
+        if (\strlen($digits) >= 10 && \substr_count($digits, '0') >= 6) {
+            return true;
+        }
+
+        return false;
+    }
+
+    public function normalize(string $value): string
+    {
+        $value = \mb_strtolower($value);
+        $value = \preg_replace('/\s+/u', ' ', $value);
+        $value = \preg_replace('/[^a-z0-9\s]/u', '', $value);
+
+        return \trim($value);
+    }
+
+    public function isTechnicalValue(string $value): bool
+    {
+        if (\preg_match('/[0-9\-]/', $value) && \preg_match('/^[A-Z0-9\-]{4,}$/', $value)) {
+            return true;
+        }
+
+        if (\preg_match('/^[A-Z]{5,20}$/', $value)) {
+            return true;
+        }
+
+        if (\in_array(\strtoupper($value), $this->getAllowedValues(), true)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    public function isGibberish(string $value): bool
+    {
+        $value = \trim($value);
+
+        if ($value === '') {
+            return false;
+        }
+
+        $bad = 0;
+
+        /** @var array<int,string> $words */
+        $words = \preg_split('/\s+/', $value);
+
+        foreach ($words as $word) {
+            if (\mb_strlen($word) < self::GIBBERISH_WORD_LENGTH) {
+                continue;
+            }
+
+            if ($this->isTechnicalValue($word)) {
+                continue;
+            }
+
+            $word = \preg_replace('/[^A-Za-z]/u', '', $word);
+
+            if ($word === '') {
+                continue;
+            }
+
+            $vowels = \preg_match_all('/[aeiouAEIOU]/u', $word);
+            $ratio = $vowels ? ($vowels / \max(1, \mb_strlen($word))) : 0;
+
+            if ($ratio < 0.2 || $ratio > 0.8) {
+                $bad++;
+            }
+
+            if (\preg_match('/[^aeiouAEIOU]{5,}/u', $word)) {
+                $bad++;
+            }
+
+            if (\preg_match('/[A-Z].*[a-z].*[A-Z]/u', $word)) {
+                $bad++;
+            }
+
+            if ($this->shannonEntropy($word) > 3.8) {
+                $bad++;
+            }
+        }
+
+        return $bad >= 2;
+    }
+
+    public function gibberishHitsFromValue(string $value, int $takeLongest = 5): int
+    {
+        /** @var array{0: array<int, string>} $matches */
+        $matches = [];
+        \preg_match_all('/\p{L}{4,}/u', $value, $matches);
+        $words = $matches[0];
+
+        \usort($words, static fn (string $a, string $b): int => \mb_strlen($b) <=> \mb_strlen($a));
+        $words = \array_slice($words, 0, $takeLongest);
+
+        $hits = 0;
+
+        foreach ($words as $w) {
+            if ($this->isTechnicalValue($w)) {
+                continue;
+            }
+
+            if ($this->isGibberish($w)) {
+                $hits++;
+            }
+        }
+
+        return $hits;
+    }
+
+    public function looksLikeASentence(string $value): bool
+    {
+        if (! \preg_match('/\s/u', $value)) {
+            return false;
+        }
+
+        if (! \preg_match('/[aeiouAEIOU]/u', $value)) {
+            return false;
+        }
+
+        if (\preg_match('/[.!?]$/u', \trim($value))) {
+            return true;
+        }
+
+        return \str_word_count($value) >= 5;
+    }
+
+    public function shannonEntropy(string $value): float
+    {
+        $length = \mb_strlen($value);
+
+        if ($length === 0) {
+            return 0.0;
+        }
+
+        $freq = [];
+
+        for ($i = 0; $i < $length; $i++) {
+            $ch = \mb_substr($value, $i, 1);
+
+            $freq[$ch] = ($freq[$ch] ?? 0) + 1;
+        }
+
+        $H = 0.0;
+
+        foreach ($freq as $c) {
+            $p = $c / $length;
+            $H -= $p * \log($p, 2);
+        }
+
+        return $H;
+    }
+
+    public function emailHasMXRecord(string $email): bool
+    {
+        $at = \strrpos($email, '@');
+
+        if ($at === false) {
+            return false;
+        }
+
+        $domain = \substr($email, $at + 1);
+
+        if ($domain === '') {
+            return false;
+        }
+
+        return \checkdnsrr($domain, 'MX') || \checkdnsrr($domain, 'A');
+    }
+
+    public function isDisposable(string $email): bool
+    {
+        $at = \strrpos($email, '@');
+
+        if ($at === false) {
+            return false;
+        }
+
+        $domain = \strtolower(\substr($email, $at + 1));
+
+        if ($domain === '') {
+            return false;
+        }
+
+        if (\in_array($domain, $this->disposableDomains, true)) {
+            return true;
+        }
+
+        foreach ($this->disposableDomains as $disposableDomain) {
+            if (\str_ends_with($domain, '.' . $disposableDomain)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function listedOnDnsBlockList(string $ip): bool
+    {
+        // Skip IPv6 entirely (or implement a v6 DNSBL)
+        if (\filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) {
+            return false;
+        }
+
+        // Explicitly skip well-known non-routable/documentation ranges
+        // RFC 5737 (TEST-NET): 192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24
+        // Benchmarking: 198.18.0.0/15, Carrier-Grade NAT: 100.64.0.0/10, Loopback/Private/Link-local: handled below too
+        $nonRoutablePatterns = [
+            '/^192\.0\.2\./', // TEST-NET-1
+            '/^198\.51\.100\./', // TEST-NET-2
+            '/^203\.0\.113\./', // TEST-NET-3
+            '/^198\.(18|19)\./', // 198.18.0.0/15 benchmarking
+            '/^100\.(6[4-9]|[7-9]\d|1[0-1]\d|12[0-7])\./', // 100.64.0.0/10 CGNAT
+        ];
+
+        foreach ($nonRoutablePatterns as $nonRoutablePattern) {
+            if (\preg_match($nonRoutablePattern, $ip)) {
+                return false;
+            }
+        }
+
+        // Only public IPv4: skip loopback/private/link-local/**reserved** per PHP's flags
+        if (\filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
+            return false;
+        }
+
+        // At this point we have a public IPv4; do the lookup
+        $reverse = \implode('.', \array_reverse(\explode('.', $ip)));
+
+        foreach ($this->dnsBlockLists as $dnsBlockList) {
+            if (@\checkdnsrr("$reverse.$dnsBlockList", 'A')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param array<string, mixed> $values
+     * @return array{
+     *   full_name: string,
+     *   email_address: string,
+     *   telephone_number: string,
+     *   postal_code: string,
+     *   message: string,
+     *   company_name: string
+     * }
+     */
+    public function buildPayloadFromFieldValues(array $values): array
+    {
+        /**
+         * @param array<int,string> $handles
+         */
+        $get = function (array $handles) use ($values) {
+            foreach ($handles as $handle) {
+                if (\array_key_exists($handle, $values) && $values[$handle] !== '') {
+                    return \trim((string) $values[$handle]);
+                }
+            }
+
+            return '';
+        };
+
+        $fullName = $get(['fullname', 'fullName', 'full_name', 'full-name', 'contactname', 'contactName', 'contact_name', 'contact-name', 'name']);
+
+        if ($fullName === '') {
+            $first = $get(['firstname', 'firstName', 'first_name', 'first-name', 'fname', 'first']);
+            $last = $get(['lastname', 'lastName', 'last_name', 'last-name', 'lname', 'last', 'surname']);
+            $fullName = \trim($first . ' ' . $last);
+        }
+
+        return [
+            'full_name' => $fullName,
+            'email_address' => $get(['email', 'emailAddress', 'email_address', 'email-address', 'mail']),
+            'telephone_number' => $get(['phone', 'phoneNumber', 'phone_number', 'phone-number', 'telephone', 'tel']),
+            'postal_code' => $get(['company_zip_code', 'companyZipCode', 'postcode', 'postCode', 'post_code', 'post-code', 'postalcode', 'postalCode', 'postal_code', 'postal-code', 'zippostalcode', 'zipPostalCode', 'zip_postal_code', 'zip-postal-code', 'zipcode', 'zipCode', 'zip_code', 'zip-code', 'zip']),
+            'message' => $get(['how_can_we_help', 'howCanWeHelp', 'how_can_we_help_you', 'howCanWeHelpYou', 'commentsquestions', 'commentsQuestions', 'comments_questions', 'comments-questions', 'description', 'comments', 'message', 'enquiry', 'inquiry', 'details', 'notes']),
+            'company_name' => $get(['company_name', 'companyName', 'company-name', 'company', 'organisation', 'organization', 'org']),
+        ];
+    }
+}
