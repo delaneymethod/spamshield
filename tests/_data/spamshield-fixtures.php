@@ -114,8 +114,27 @@ return [
         'expect' => 'ham',
         'why' => 'Short but sentence-like and non-gibberish.',
     ],
-
+    [
+        'label' => 'Legit newsletter sign up',
+        'payload' => [
+            'email' => 'cat.astrophe207@gmail.com',
+            'honeypot' => '',
+        ],
+        'meta' => [],
+        'expect' => 'ham',
+        'why' => 'Looks human.',
+    ],
     // --- Spam patterns (should FAIL) ---
+    [
+        'label' => 'Spam newsletter sign up',
+        'payload' => [
+            'email' => 'cat.astrophe207@gmail.com',
+            'honeypot' => 'MCBTyntpZgP',
+        ],
+        'meta' => [],
+        'expect' => 'spam',
+        'why' => 'Gibberish fields,',
+    ],
     [
         'label' => 'Random gibberish + reused Gmail',
         'payload' => [

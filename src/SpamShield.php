@@ -261,12 +261,6 @@ final class SpamShield
         }
 
         if ($gibberishHits >= 2) {
-            $score += 6;
-
-            $reasons[] = 'gibberish_fields';
-        }
-
-        if ($gibberishHits >= 3) {
             $score += 7;
 
             $reasons[] = 'multiple_gibberish_fields';
@@ -454,6 +448,15 @@ final class SpamShield
         $words = \preg_split('/\s+/', $value);
 
         foreach ($words as $word) {
+            // Skip URLs and emails entirely
+            if (\preg_match('~^(https?://|www\.)~i', $word)) {
+                continue;
+            }
+
+            if (\filter_var($word, FILTER_VALIDATE_EMAIL)) {
+                continue;
+            }
+
             if (\mb_strlen($word) < self::GIBBERISH_WORD_LENGTH) {
                 continue;
             }
@@ -463,7 +466,6 @@ final class SpamShield
             }
 
             $word = \preg_replace('/[^A-Za-z]/u', '', $word);
-
             if ($word === '') {
                 continue;
             }
@@ -646,8 +648,9 @@ final class SpamShield
 
     /**
      * Build a normalized payload from the submitted form values ONLY.
-     * - Include a canonical field if (and only if) an alias for it WAS POSTED, even if the value is empty.
-     * - Suppress raw alias fields from passthrough when they fed a canonical.
+     * - Canonicals are included iff an alias for them WAS POSTED (value may be empty).
+     * - By default, ALL original submitted fields are also kept verbatim (incl. empty)
+     *   so honeypots with arbitrary names always survive.
      *
      * @param array<string,mixed> $values
      * @param array<string,string> $overrides Optional canonicalKey => exact original key to force
@@ -757,12 +760,9 @@ final class SpamShield
             }
         }
 
-        // 5) Passthrough: any other non-empty submitted fields that aren’t aliases and weren’t consumed
+        // 5) Passthrough: keep ALL submitted fields (incl. empty) EXCEPT any that were consumed to build a canonical.
         foreach ($submitted as $key => $value) {
-            if ($value === '') {
-                continue;
-            }
-
+            // if this original field fed a canonical, don't add it again
             if (isset($consumed[$key])) {
                 continue;
             }
@@ -772,6 +772,7 @@ final class SpamShield
                 continue;
             }
 
+            // don't overwrite anything already set under the same key
             if (array_key_exists($key, $result)) {
                 continue;
             }
