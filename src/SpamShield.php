@@ -82,8 +82,18 @@ final class SpamShield
         foreach ($payload as $value) {
             $value = \trim($value);
 
-            if ($value !== '' && $this->isGibberish($value)) {
+            if (empty($value)) {
+                continue;
+            }
+
+            if ($this->isGibberish($value)) {
                 $gibberishHits++;
+            }
+
+            if ($this->isDisposable($value)) {
+                $score += 7;
+
+                $reasons[] = 'disposable_email';
             }
         }
 

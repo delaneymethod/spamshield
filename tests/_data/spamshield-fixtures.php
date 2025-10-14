@@ -124,6 +124,40 @@ return [
         'expect' => 'ham',
         'why' => 'Looks human.',
     ],
+    [
+        'label' => 'IP on private range (DNS Block List skipped)',
+        'payload' => [
+            'full_name' => 'Local Tester',
+            'email' => 'tester@local.dev',
+            'phone' => '07400900333',
+            'company_name' => 'Dev Env',
+            'company_zip_code' => 'AB1 2CD',
+            'how_can_we_help_you' => 'Testing locally, please ignore.',
+        ],
+        'meta' => [
+            'ip' => '127.0.0.1',
+            'require_message' => true,
+        ],
+        'expect' => 'ham',
+        'why' => 'Loopback with skip_dns_block_list=true should never hit DNS Block List.',
+    ],
+    [
+        'label' => 'Repeated content hash (same message, diff email)',
+        'payload' => [
+            'full_name' => 'Tom R',
+            'email' => 'tomr@example.net',
+            'phone' => '07700900111',
+            'company_name' => 'TR Ltd',
+            'company_zip_code' => 'AB1 2CD',
+            'how_can_we_help_you' => 'Hello, this is a test message for spam filter repetition.',
+        ],
+        'meta' => [
+            'ip' => '203.0.113.31',
+            'require_message' => true,
+        ],
+        'expect' => 'ham',
+        'why' => 'First time should pass.',
+    ],
     // --- Spam patterns (should FAIL) ---
     [
         'label' => 'Spam newsletter sign up',
@@ -272,23 +306,6 @@ return [
         'why' => 'Disposable domain should add enough to push near/over threshold.',
     ],
     [
-        'label' => 'Repeated content hash (same message, diff email)',
-        'payload' => [
-            'full_name' => 'Tom R',
-            'email' => 'tomr@example.net',
-            'phone' => '07700900111',
-            'company_name' => 'TR Ltd',
-            'company_zip_code' => 'AB1 2CD',
-            'how_can_we_help_you' => 'Hello, this is a test message for spam filter repetition.',
-        ],
-        'meta' => [
-            'ip' => '203.0.113.31',
-            'require_message' => true,
-        ],
-        'expect' => 'ham',
-        'why' => 'First time should pass.',
-    ],
-    [
         'label' => 'Repeated content hash (again)',
         'payload' => [
             'full_name' => 'Alice W',
@@ -304,23 +321,6 @@ return [
         ],
         'expect' => 'spam',
         'why' => 'Second time within window should trigger repeat_content.',
-    ],
-    [
-        'label' => 'IP on private range (DNS Block List skipped)',
-        'payload' => [
-            'full_name' => 'Local Tester',
-            'email' => 'tester@local.dev',
-            'phone' => '07400900333',
-            'company_name' => 'Dev Env',
-            'company_zip_code' => 'AB1 2CD',
-            'how_can_we_help_you' => 'Testing locally, please ignore.',
-        ],
-        'meta' => [
-            'ip' => '127.0.0.1',
-            'require_message' => true,
-        ],
-        'expect' => 'ham',
-        'why' => 'Loopback with skip_dns_block_list=true should never hit DNS Block List.',
     ],
     [
         'label' => 'Emoji/garbage + link dump',
