@@ -252,6 +252,7 @@ final class SpamShield
         }
 
         return [
+            'ip' => $ip,
             'score' => $score,
             'reasons' => $reasons,
             'is_spam' => $score >= self::THRESHOLD,
