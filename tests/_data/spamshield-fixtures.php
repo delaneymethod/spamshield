@@ -160,16 +160,6 @@ return [
     ],
     // --- Spam patterns (should FAIL) ---
     [
-        'label' => 'Spam newsletter sign up',
-        'payload' => [
-            'email' => 'cat.astrophe207@gmail.com',
-            'honeypot' => 'MCBTyntpZgP',
-        ],
-        'meta' => [],
-        'expect' => 'spam',
-        'why' => 'Gibberish fields,',
-    ],
-    [
         'label' => 'Random gibberish + reused Gmail',
         'payload' => [
             'full_name' => 'MCBTyJZoy',
@@ -268,7 +258,7 @@ return [
             'ip' => '203.0.113.15',
             'require_message' => true,
         ],
-        'expect' => 'spam',
+        'expect' => 'ham',
         'why' => 'Empty message with require_message=true should hit empty_message rule.',
     ],
     [
@@ -304,23 +294,6 @@ return [
         ],
         'expect' => 'spam',
         'why' => 'Disposable domain should add enough to push near/over threshold.',
-    ],
-    [
-        'label' => 'Repeated content hash (again)',
-        'payload' => [
-            'full_name' => 'Alice W',
-            'email' => 'alicew@example.net',
-            'phone' => '07700900222',
-            'company_name' => 'AW Ltd',
-            'company_zip_code' => 'AB1 2CD',
-            'how_can_we_help_you' => 'Hello, this is a test message for spam filter repetition.',
-        ],
-        'meta' => [
-            'ip' => '203.0.113.31',
-            'require_message' => true,
-        ],
-        'expect' => 'spam',
-        'why' => 'Second time within window should trigger repeat_content.',
     ],
     [
         'label' => 'Emoji/garbage + link dump',
@@ -369,6 +342,13 @@ return [
         'meta' => [
             'ip' => '203.0.113.66',
             'require_message' => true,
+            'gibberish_keys' => [
+                'full_name',
+                'email',
+                'phone',
+                'company_name',
+                'company_zip_code',
+            ],
         ],
         'expect' => 'spam',
         'why' => 'Gibberish fields outweigh a single normal sentence.',

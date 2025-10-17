@@ -13,10 +13,6 @@ declare(strict_types=1);
 
 namespace delaneymethod\spamshield;
 
-use delaneymethod\spamshield\stores\NullStore;
-use delaneymethod\spamshield\stores\SessionStore;
-use delaneymethod\spamshield\stores\SpamStoreInterface;
-
 final class SpamShield
 {
     private const THRESHOLD = 7; // final spam cutoff
@@ -27,10 +23,6 @@ final class SpamShield
     private const MAXIMUM_FIELD_LENGTH = 200;
 
     private const GIBBERISH_WORD_LENGTH = 6;
-
-    private const RECENT_WINDOW_SECONDS = 43200; // 12 hours
-
-    private SpamStoreInterface $store;
 
     /** @var array<int, string> */
     private array $allowedValues = [];
@@ -79,27 +71,21 @@ final class SpamShield
         // Gibberish
         $gibberishHits = 0;
 
-        foreach ($payload as $value) {
-            $value = \trim($value);
-
-            if (empty($value)) {
+        // If caller explicitly asked for more fields, scan only those (if present)
+        $extraGibberishKeys = array_values(array_filter((array) ($meta['gibberish_keys'] ?? []), fn($extraGibberishKey) => is_string($extraGibberishKey) && $extraGibberishKey !== 'message'));
+        foreach ($extraGibberishKeys as $extraGibberishKey) {
+            if (!array_key_exists($extraGibberishKey, $payload)) {
                 continue;
             }
 
-            if ($this->isGibberish($value)) {
+            $value = trim($payload[$extraGibberishKey]);
+            if ($value !== '' && $this->isGibberish($value)) {
                 $gibberishHits++;
-            }
-
-            if ($this->isDisposable($value)) {
-                $score += 7;
-
-                $reasons[] = 'disposable_email';
             }
         }
 
         // Email sanity
         $email = \trim($payload['email_address'] ?? '');
-
         if ($email !== '') {
             $email = \strtolower($email);
 
@@ -126,26 +112,12 @@ final class SpamShield
 
                 $reasons[] = 'suspect_tld';
             }
-
-            // repeated email within time frame
-            if ($this->getStore()->seenRecently('email', $email, self::RECENT_WINDOW_SECONDS)) {
-                $score += 3;
-
-                $reasons[] = 'repeat_email';
-            }
         }
 
         // Message sanity
         $message = \trim($payload['message'] ?? '');
-
         if ($message !== '') {
             $hash = \hash('sha256', $this->normalize($message));
-
-            if ($this->getStore()->seenRecently('content_hash', $hash, self::RECENT_WINDOW_SECONDS)) {
-                $score += 7;
-
-                $reasons[] = 'repeated_content';
-            }
 
             $messageLength = \mb_strlen($message);
             $wordCount = \preg_match_all('/\p{L}+/u', $message, $tmp);
@@ -212,12 +184,9 @@ final class SpamShield
             }
 
             $gibberishHits += $this->gibberishHitsFromValue($message);
-
-            // remember content hash for repetition window
-            $this->getStore()->remember('content_hash', $hash, self::RECENT_WINDOW_SECONDS);
         } else {
             if ($requireMessage) {
-                $score += 7;
+                $score += 5;
 
                 $reasons[] = 'empty_message';
             }
@@ -225,7 +194,6 @@ final class SpamShield
 
         // Telephone number sanity
         $phone = \trim($payload['telephone_number'] ?? '');
-
         if ($phone !== '') {
             $digits = \preg_replace('/\D+/', '', $phone);
             $isUS = (bool) \preg_match('/^(1)?\d{10}$/', $digits);
@@ -246,7 +214,6 @@ final class SpamShield
 
         // Postal code sanity (UK-ish heuristic)
         $postcode = \trim($payload['postal_code'] ?? '');
-
         if ($postcode !== '') {
             if (\mb_strlen($postcode) > self::MAXIMUM_FIELD_LENGTH) {
                 $score += 1;
@@ -278,16 +245,10 @@ final class SpamShield
 
         // DNS Block List
         $ip = \trim($meta['ip'] ?? '');
-
         if ($ip !== '' && ! $skipDnsBlockList && $this->listedOnDnsBlockList($ip)) {
-            $score += 3;
+            $score += 2;
 
             $reasons[] = 'dns_blocklist_listed';
-        }
-
-        // remember email for repetition checks next time
-        if ($email !== '') {
-            $this->getStore()->remember('email', $email, self::RECENT_WINDOW_SECONDS);
         }
 
         return [
@@ -311,24 +272,6 @@ final class SpamShield
     public function getAllowedValues(): array
     {
         return $this->allowedValues;
-    }
-
-    public function setStore(SpamStoreInterface $store): void
-    {
-        $this->store = $store;
-    }
-
-    public function getStore(): SpamStoreInterface
-    {
-        if (! isset($this->store)) {
-            if (PHP_SAPI !== 'cli' && \session_status() !== PHP_SESSION_ACTIVE) {
-                @\session_start();
-            }
-
-            $this->store = (\session_status() === PHP_SESSION_ACTIVE) ? new SessionStore() : new NullStore();
-        }
-
-        return $this->store;
     }
 
     public function urlCount(string $value): int
@@ -372,20 +315,17 @@ final class SpamShield
     public function suspectTopLevelDomains(string $email): bool
     {
         $at = \strrpos($email, '@');
-
         if ($at === false) {
             return false;
         }
 
         $domain = \strtolower(\substr($email, $at + 1));
-
         if ($domain === '') {
             return false;
         }
 
         $parts = \explode('.', $domain); // array<int,string>
         $tld = \end($parts);
-
         if ($tld == false) {
             return false;
         }
@@ -396,7 +336,6 @@ final class SpamShield
     public function obviouslyFakePhone(string $raw): bool
     {
         $digits = \preg_replace('/\D+/', '', $raw);
-
         if ($digits === '') {
             return false;
         }
@@ -447,7 +386,6 @@ final class SpamShield
     public function isGibberish(string $value): bool
     {
         $value = \trim($value);
-
         if ($value === '') {
             return false;
         }
@@ -458,12 +396,18 @@ final class SpamShield
         $words = \preg_split('/\s+/', $value);
 
         foreach ($words as $word) {
-            // Skip URLs and emails entirely
+            // Skip URLs
             if (\preg_match('~^(https?://|www\.)~i', $word)) {
                 continue;
             }
 
+            // Skip emails
             if (\filter_var($word, FILTER_VALIDATE_EMAIL)) {
+                continue;
+            }
+
+            // Only analyze Latin-script words; skip if any non-Latin chars present
+            if (!\preg_match('/^\p{Latin}+$/u', \preg_replace('/[^[:alpha:]]/u', '', $word))) {
                 continue;
             }
 
@@ -475,22 +419,24 @@ final class SpamShield
                 continue;
             }
 
-            $word = \preg_replace('/[^A-Za-z]/u', '', $word);
-            if ($word === '') {
+            $letters = \preg_replace('/[^A-Za-z]/u', '', $word);
+            if ($letters === '') {
                 continue;
             }
 
+            // vowel ratio
             $vowels = \preg_match_all('/[aeiouAEIOU]/u', $word);
             $ratio = $vowels ? ($vowels / \max(1, \mb_strlen($word))) : 0;
-
             if ($ratio < 0.2 || $ratio > 0.8) {
                 $bad++;
             }
 
+            // long consonant run
             if (\preg_match('/[^aeiouAEIOU]{5,}/u', $word)) {
                 $bad++;
             }
 
+            // mixed case weirdness
             if (\preg_match('/[A-Z].*[a-z].*[A-Z]/u', $word)) {
                 $bad++;
             }

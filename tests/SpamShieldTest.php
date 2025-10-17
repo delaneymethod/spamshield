@@ -14,7 +14,6 @@ declare(strict_types=1);
 namespace delaneymethod\spamshield\tests;
 
 use delaneymethod\spamshield\SpamShield;
-use delaneymethod\spamshield\stores\ArrayStore;
 use PHPUnit\Framework\TestCase;
 
 final class SpamShieldTest extends TestCase
@@ -24,7 +23,6 @@ final class SpamShieldTest extends TestCase
     protected function setUp(): void
     {
         $this->spamShield = new SpamShield();
-        $this->spamShield->setStore(new ArrayStore());
     }
 
     public function testFixtures(): void
@@ -163,19 +161,17 @@ final class SpamShieldTest extends TestCase
         ];
 
         // Run 1: no allowlist
-        $s1 = new SpamShield();
-        $s1->setStore(new ArrayStore());
-        $s1->setAllowedValues([]);
-        $r1 = $s1->score($payload, $meta);
+        $spamShield1 = new SpamShield();
+        $spamShield1->setAllowedValues([]);
+        $result1 = $spamShield1->score($payload, $meta);
 
-        // Run 2: allowlist present (fresh instance/store -> no repetition penalty)
-        $s2 = new SpamShield();
-        $s2->setStore(new ArrayStore());
-        $s2->setAllowedValues(['MITSUBISHI']);
-        $r2 = $s2->score($payload, $meta);
+        // Run 2: allowlist present
+        $spamShield2 = new SpamShield();
+        $spamShield2->setAllowedValues(['MITSUBISHI']);
+        $result2 = $spamShield2->score($payload, $meta);
 
         // Allowlisting should not increase score (usually lowers it slightly)
-        $this->assertLessThanOrEqual($r1['score'], $r2['score'], 'Allowlist should not increase score');
+        $this->assertLessThanOrEqual($result1['score'], $result2['score'], 'Allowlist should not increase score');
     }
 
     public function testLooksLikeASentence(): void
