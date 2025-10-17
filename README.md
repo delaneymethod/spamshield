@@ -12,14 +12,17 @@ composer require delaneymethod/spamshield
 
 ```php
 use delaneymethod\spamshield\SpamShield;
-use delaneymethod\spamshield\stores\SessionStore;
 
-SpamShield::setStore(new ApcuStore()); // or SessionStore (default store) or NullStore
 SpamShield::setAllowedValues(['ABB', 'KUKA']);
 
 $result = SpamShield::score($_POST, [
     'ip' => $_SERVER['REMOTE_ADDR'] ?? '',
     'require_message' => true,
+    'gibberish_keys' => ['my_field_handle'],
+    'skip_dns_block_list' => true,
+    'skip_mx_record_check' => true,
+    'minimum_message_words' => 5,
+    'minimum_message_characters' => 300,
 ]);
 
 if ($result['is_spam']) {

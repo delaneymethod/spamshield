@@ -58,6 +58,7 @@ final class SpamShield
     public function score(array $payload, array $meta = []): array
     {
         $requireMessage = $meta['require_message'] ?? false;
+        $gibberishKeys = (array) ($meta['gibberish_keys'] ?? []);
         $skipDnsBlockList = (bool) ($meta['skip_dns_block_list'] ?? false);
         $skipMxRecordCheck = (bool) ($meta['skip_mx_record_check'] ?? false);
         $minimumWords = (int) ($meta['minimum_message_words'] ?? self::MINIMUM_MESSAGE_WORDS);
@@ -72,7 +73,7 @@ final class SpamShield
         $gibberishHits = 0;
 
         // If caller explicitly asked for more fields, scan only those (if present)
-        $extraGibberishKeys = array_values(array_filter((array) ($meta['gibberish_keys'] ?? []), fn($extraGibberishKey) => is_string($extraGibberishKey) && $extraGibberishKey !== 'message'));
+        $extraGibberishKeys = array_values(array_filter($gibberishKeys, fn($extraGibberishKey) => is_string($extraGibberishKey) && $extraGibberishKey !== 'message'));
         foreach ($extraGibberishKeys as $extraGibberishKey) {
             if (!array_key_exists($extraGibberishKey, $payload)) {
                 continue;
