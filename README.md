@@ -10,12 +10,76 @@ composer require delaneymethod/spamshield
 
 ## Usage
 
+Craft CMS with Freeform
+
+```php
+use Craft;
+use craft\helpers\Json;
+use delaneymethod\spamshield\SpamShield;
+use Solspace\Freeform\Events\Forms\ValidationEvent;
+use Solspace\Freeform\Form\Form;
+use Solspace\Freeform\Freeform;
+use Solspace\Freeform\Integrations\Single\FormMonitor\Providers\FormMonitorProvider;
+use Solspace\Freeform\Library\DataObjects\SpamReason;
+use yii\base\Event;
+use yii\log\Logger;
+
+Event::on(
+    Form::class,
+    Form::EVENT_BEFORE_VALIDATE,
+    static function (ValidationEvent $event) {
+        if (!$event->isValid) {
+            return;
+        }
+
+        $settingsService = Freeform::getInstance()->settings;
+        $settingsModel = $settingsService->getSettingsModel();
+        if ($settingsModel->bypassSpamCheckOnLoggedInUsers && Craft::$app->getUser()->id) {
+            return;
+        }
+
+        $form = $event->getForm();
+        if (!$form->isLastPage()) {
+            return;
+        }
+
+        $formMonitorProvider = Craft::$container->get(FormMonitorProvider::class);
+        if ($formMonitorProvider->isRequestFromFormMonitor($form)) {
+            return;
+        }
+
+        $submission = $form->getSubmission();
+
+        $handle = $form->getHandle();
+
+        $payload = $submission->getFormFieldValues();
+
+        $meta = [
+            'ip' => Craft::$app->getRequest()->getUserIP() ?? '',
+            'require_message' => false,
+            'gibberish_keys' => [],
+        ];
+
+        $shield = new SpamShield();
+        $result = $shield->score($payload, $meta);
+
+        if ($result['is_spam']) {
+            $form->markAsSpam(
+                SpamReason::TYPE_GENERIC,
+                'SpamShield test failed',
+                Json::encode($result, JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT)
+            );
+        }
+    }
+);
+```
+
+Vanilla PHP
+
 ```php
 use delaneymethod\spamshield\SpamShield;
 
-SpamShield::setAllowedValues(['ABB', 'KUKA']);
-
-$result = SpamShield::score($_POST, [
+$meta = [
     'ip' => $_SERVER['REMOTE_ADDR'] ?? '',
     'require_message' => true,
     'gibberish_keys' => ['my_field_handle'],
@@ -23,8 +87,11 @@ $result = SpamShield::score($_POST, [
     'skip_mx_record_check' => true,
     'minimum_message_words' => 5,
     'minimum_message_characters' => 300,
-]);
+];
 
+SpamShield::setAllowedValues(['ABB', 'KUKA']);
+
+$result = SpamShield::score($_POST, $meta);
 if ($result['is_spam']) {
     // block or fake success
 }
