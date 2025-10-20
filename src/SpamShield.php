@@ -118,8 +118,6 @@ final class SpamShield
         // Message sanity
         $message = \trim($payload['message'] ?? '');
         if ($message !== '') {
-            $hash = \hash('sha256', $this->normalize($message));
-
             $messageLength = \mb_strlen($message);
             $wordCount = \preg_match_all('/\p{L}+/u', $message, $tmp);
 
@@ -163,25 +161,26 @@ final class SpamShield
                 $score += 2;
 
                 $reasons[] = 'spammy_language';
+
+                // Only nudge combo for spam terms
+                if ($urlCount >= 1) {
+                    $score += 1;
+
+                    $reasons[] = 'spammy_link_combo';
+                }
             }
 
             if ($containsPhishTerms) {
                 $score += 5;
 
                 $reasons[] = 'phishing_language';
-            }
 
-            // Optional combo nudges (kept; small)
-            if ($containsSpamTerms && $urlCount >= 1) {
-                $score += 1;
+                // Only nudge combo for phishing terms
+                if ($urlCount >= 1) {
+                    $score += 1;
 
-                $reasons[] = 'spammy_link_combo';
-            }
-
-            if ($containsPhishTerms && $urlCount >= 1) {
-                $score += 1;
-
-                $reasons[] = 'spammy_link_combo';
+                    $reasons[] = 'phishing_link_combo';
+                }
             }
 
             $gibberishHits += $this->gibberishHitsFromValue($message);
@@ -293,7 +292,11 @@ final class SpamShield
         $value = \mb_strtolower($value);
 
         foreach ($phrases as $phrase) {
-            if (\str_contains($value, \mb_strtolower($phrase))) {
+            $phrase = \mb_strtolower($phrase);
+
+            // Match the full phrase with non-letter boundaries on both sides
+            $pattern = '~(?<!\p{L})' . \preg_quote($phrase, '~') . '(?!\p{L})~u';
+            if (\preg_match($pattern, $value)) {
                 return true;
             }
         }

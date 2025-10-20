@@ -60,8 +60,8 @@ Event::on(
             'gibberish_keys' => [],
         ];
 
-        $shield = new SpamShield();
-        $result = $shield->score($payload, $meta);
+        $spamShield = new SpamShield();
+        $result = $spamShield->score($payload, $meta);
 
         if ($result['is_spam']) {
             $form->markAsSpam(
@@ -89,9 +89,10 @@ $meta = [
     'minimum_message_characters' => 300,
 ];
 
-SpamShield::setAllowedValues(['ABB', 'KUKA']);
+$spamShield = new SpamShield();
+$spamShield->setAllowedValues(['ABB', 'KUKA']);
 
-$result = SpamShield::score($_POST, $meta);
+$result = $spamShield->score($_POST, $meta);
 if ($result['is_spam']) {
     // block or fake success
 }
