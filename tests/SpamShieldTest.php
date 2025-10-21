@@ -29,8 +29,8 @@ class SpamShieldTest extends TestCase
 
         foreach ($fixtures as $fixture) {
             $meta = $fixture['meta'] ?? [];
-            $meta['skip_dns_block_list'] = true;
-            $meta['skip_mx_record_check'] = true;
+            $meta['check_dns_block_lists'] = false;
+            $meta['check_mx_record'] = false;
             $meta['gibberish_word_length'] = 6;
 
             $result = $this->spamShield->score($fixture['payload'], $meta);
@@ -154,8 +154,8 @@ class SpamShieldTest extends TestCase
         ];
 
         $meta = [
-            'skip_dns_block_list' => true,
-            'skip_mx_record_check' => true,
+            'check_dns_block_lists' => false,
+            'check_mx_record' => false,
         ];
 
         // Run 1: no allowlist
@@ -277,8 +277,8 @@ class SpamShieldTest extends TestCase
             'email' => 'itsupport@example.com',
             'how_can_we_help_you' => 'Please verify your account here: http://example.com/verify',
         ], [
-            'skip_mx_record_check' => true,
-            'skip_dns_block_list' => true,
+            'check_mx_record' => false,
+            'check_dns_block_lists' => false,
         ]);
 
         $this->assertContains('phishing_language', $result['reasons']);

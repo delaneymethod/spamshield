@@ -175,7 +175,7 @@ return [
             ],
         ],
         'expect' => 'ham',
-        'why' => 'Loopback with skip_dns_block_list=true should never hit DNS Block List.',
+        'why' => 'Loopback with check_dns_block_lists=true should never hit DNS Block List.',
     ],
     [
         'label' => 'Repeated content hash (same message, diff email)',

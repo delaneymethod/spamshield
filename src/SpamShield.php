@@ -57,8 +57,8 @@ class SpamShield
     public function score(array $payload, array $meta = []): array
     {
         $fieldHandles = (array) ($meta['field_handles'] ?? []);
-        $skipDnsBlockList = (bool) ($meta['skip_dns_block_list'] ?? false);
-        $skipMxRecordCheck = (bool) ($meta['skip_mx_record_check'] ?? false);
+        $checkMxRecord = (bool) ($meta['check_mx_record'] ?? false);
+        $checkDnsBlockLists = (bool) ($meta['check_dns_block_lists'] ?? false);
         $minimumWords = (int) ($meta['minimum_message_words'] ?? self::MINIMUM_MESSAGE_WORDS);
         $gibberishWordLength = (int) ($meta['gibberish_word_length'] ?? self::GIBBERISH_WORD_LENGTH);
         $minimumCharacters = (int) ($meta['minimum_message_characters'] ?? self::MINIMUM_MESSAGE_CHARACTERS);
@@ -97,7 +97,7 @@ class SpamShield
                 $reasons[] = 'bad_email_format';
             }
 
-            if (! $skipMxRecordCheck && ! $this->emailHasMXRecord($email)) {
+            if ($checkMxRecord && ! $this->emailHasMXRecord($email)) {
                 $score += 2;
 
                 $reasons[] = 'no_mx_record';
@@ -246,7 +246,7 @@ class SpamShield
 
         // DNS Block List
         $ip = \trim($meta['ip'] ?? '');
-        if ($ip !== '' && ! $skipDnsBlockList && $this->listedOnDnsBlockList($ip)) {
+        if ($ip !== '' && $checkDnsBlockLists && $this->listedOnDnsBlockList($ip)) {
             $score += 2;
 
             $reasons[] = 'dns_blocklist_listed';
