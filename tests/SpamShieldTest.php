@@ -155,7 +155,6 @@ final class SpamShieldTest extends TestCase
         ];
 
         $meta = [
-            'require_message' => true,
             'skip_dns_block_list' => true,
             'skip_mx_record_check' => true,
         ];
@@ -279,7 +278,6 @@ final class SpamShieldTest extends TestCase
             'email' => 'itsupport@example.com',
             'how_can_we_help_you' => 'Please verify your account here: http://example.com/verify',
         ], [
-            'require_message' => true,
             'skip_mx_record_check' => true,
             'skip_dns_block_list' => true,
         ]);

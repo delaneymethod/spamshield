@@ -57,7 +57,6 @@ final class SpamShield
      */
     public function score(array $payload, array $meta = []): array
     {
-        $requireMessage = $meta['require_message'] ?? false;
         $gibberishKeys = (array) ($meta['gibberish_keys'] ?? []);
         $skipDnsBlockList = (bool) ($meta['skip_dns_block_list'] ?? false);
         $skipMxRecordCheck = (bool) ($meta['skip_mx_record_check'] ?? false);
@@ -184,12 +183,6 @@ final class SpamShield
             }
 
             $gibberishHits += $this->gibberishHitsFromValue($message);
-        } else {
-            if ($requireMessage) {
-                $score += 5;
-
-                $reasons[] = 'empty_message';
-            }
         }
 
         // Telephone number sanity
@@ -273,6 +266,22 @@ final class SpamShield
     public function getAllowedValues(): array
     {
         return $this->allowedValues;
+    }
+
+    /**
+     * @param array<int, string> $dnsBlockLists
+     */
+    public function setDnsBlockLists(array $dnsBlockLists): void
+    {
+        $this->dnsBlockLists = array_unique(array_merge($this->dnsBlockLists, $dnsBlockLists));
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public function getDnsBlockLists(): array
+    {
+        return $this->dnsBlockLists;
     }
 
     public function urlCount(string $value): int
@@ -598,7 +607,7 @@ final class SpamShield
         // At this point we have a public IPv4; do the lookup
         $reverse = \implode('.', \array_reverse(\explode('.', $ip)));
 
-        foreach ($this->dnsBlockLists as $dnsBlockList) {
+        foreach ($this->getDnsBlockLists() as $dnsBlockList) {
             if (@\checkdnsrr("$reverse.$dnsBlockList", 'A')) {
                 return true;
             }
