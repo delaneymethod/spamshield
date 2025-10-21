@@ -17,11 +17,19 @@ return [
             'firstname' => 'Cat',
             'lastname' => 'Cole',
             'email' => 'cat.astrophe207@gmail.com',
-            'custom_field_1' => 'Test 1',
+            'custom_field_1' => 'abAQAIajhVVXo',
             'custom_field_2' => 'Test 2',
             'custom_field_3' => 'Test 3',
         ],
-        'meta' => [],
+        'meta' => [
+            'field_handles' => [
+                'firstname',
+                'lastname',
+                'custom_field_1',
+                'custom_field_2',
+                'custom_field_3',
+            ],
+        ],
         'expect' => 'ham',
         'why' => 'Looks human.',
     ],
@@ -37,6 +45,12 @@ return [
         ],
         'meta' => [
             'ip' => '198.51.100.25',
+            'field_handles' => [
+                'full_name',
+                'lastname',
+                'company_name',
+                'company_zip_code',
+            ],
         ],
         'expect' => 'ham',
         'why' => 'Normal sentences, technical token whitelisted, valid email/phone.',
@@ -53,6 +67,12 @@ return [
         ],
         'meta' => [
             'ip' => '203.0.113.54',
+            'field_handles' => [
+                'full_name',
+                'lastname',
+                'company_name',
+                'company_zip_code',
+            ],
         ],
         'expect' => 'ham',
         'why' => 'Looks human, proper UK postcode & phone format.',
@@ -69,6 +89,12 @@ return [
         ],
         'meta' => [
             'ip' => '203.0.113.21',
+            'field_handles' => [
+                'full_name',
+                'lastname',
+                'company_name',
+                'company_zip_code',
+            ],
             'minimum_message_characters' => 10,
             'minimum_message_words' => 2,
         ],
@@ -87,6 +113,12 @@ return [
         ],
         'meta' => [
             'ip' => '198.51.100.90',
+            'field_handles' => [
+                'full_name',
+                'lastname',
+                'company_name',
+                'company_zip_code',
+            ],
         ],
         'expect' => 'ham',
         'why' => 'Sentence content, corporate domain, valid phone in E.164-ish.',
@@ -103,6 +135,12 @@ return [
         ],
         'meta' => [
             'ip' => '203.0.113.12',
+            'field_handles' => [
+                'full_name',
+                'lastname',
+                'company_name',
+                'company_zip_code',
+            ],
         ],
         'expect' => 'ham',
         'why' => 'Short but sentence-like and non-gibberish.',
@@ -129,6 +167,12 @@ return [
         ],
         'meta' => [
             'ip' => '127.0.0.1',
+            'field_handles' => [
+                'full_name',
+                'lastname',
+                'company_name',
+                'company_zip_code',
+            ],
         ],
         'expect' => 'ham',
         'why' => 'Loopback with skip_dns_block_list=true should never hit DNS Block List.',
@@ -145,6 +189,12 @@ return [
         ],
         'meta' => [
             'ip' => '203.0.113.31',
+            'field_handles' => [
+                'full_name',
+                'lastname',
+                'company_name',
+                'company_zip_code',
+            ],
         ],
         'expect' => 'ham',
         'why' => 'First time should pass.',
@@ -162,6 +212,12 @@ return [
         ],
         'meta' => [
             'ip' => '203.0.113.10',
+            'field_handles' => [
+                'full_name',
+                'lastname',
+                'company_name',
+                'company_zip_code',
+            ],
         ],
         'expect' => 'spam',
         'why' => 'Gibberish fields, short/no-sentence, weird zip.',
@@ -178,6 +234,12 @@ return [
         ],
         'meta' => [
             'ip' => '203.0.113.11',
+            'field_handles' => [
+                'full_name',
+                'lastname',
+                'company_name',
+                'company_zip_code',
+            ],
         ],
         'expect' => 'spam',
         'why' => 'Repeat email + gibberish should tip score over threshold.',
@@ -194,6 +256,12 @@ return [
         ],
         'meta' => [
             'ip' => '198.51.100.77',
+            'field_handles' => [
+                'full_name',
+                'lastname',
+                'company_name',
+                'company_zip_code',
+            ],
         ],
         'expect' => 'spam',
         'why' => 'Spammy domain, nonsense phone, sales pitch link.',
@@ -210,6 +278,12 @@ return [
         ],
         'meta' => [
             'ip' => '203.0.113.60',
+            'field_handles' => [
+                'full_name',
+                'lastname',
+                'company_name',
+                'company_zip_code',
+            ],
         ],
         'expect' => 'spam',
         'why' => 'Disposable domain + gibberish + sales language.',
@@ -226,6 +300,12 @@ return [
         ],
         'meta' => [
             'ip' => '198.51.100.40',
+            'field_handles' => [
+                'full_name',
+                'lastname',
+                'company_name',
+                'company_zip_code',
+            ],
         ],
         'expect' => 'spam',
         'why' => 'Link + social-engineering text, odd domain.',
@@ -242,6 +322,12 @@ return [
         ],
         'meta' => [
             'ip' => '203.0.113.16',
+            'field_handles' => [
+                'full_name',
+                'lastname',
+                'company_name',
+                'company_zip_code',
+            ],
         ],
         'expect' => 'spam',
         'why' => 'Gibberish + short/no-sentence + weird zip.',
@@ -258,6 +344,12 @@ return [
         ],
         'meta' => [
             'ip' => '203.0.113.19',
+            'field_handles' => [
+                'full_name',
+                'lastname',
+                'company_name',
+                'company_zip_code',
+            ],
         ],
         'expect' => 'spam',
         'why' => 'Disposable domain should add enough to push near/over threshold.',
@@ -274,6 +366,12 @@ return [
         ],
         'meta' => [
             'ip' => '203.0.113.200',
+            'field_handles' => [
+                'full_name',
+                'lastname',
+                'company_name',
+                'company_zip_code',
+            ],
         ],
         'expect' => 'spam',
         'why' => 'Disposable + nonsense + link spray.',
@@ -290,6 +388,12 @@ return [
         ],
         'meta' => [
             'ip' => '198.51.100.41',
+            'field_handles' => [
+                'full_name',
+                'lastname',
+                'company_name',
+                'company_zip_code',
+            ],
         ],
         'expect' => 'spam',
         'why' => 'Bad domain (no MX record), weird characters.',
@@ -306,12 +410,26 @@ return [
         ],
         'meta' => [
             'ip' => '203.0.113.66',
-            'gibberish_keys' => [
+            'field_handles' => [
                 'full_name',
                 'email',
                 'phone',
                 'company_name',
                 'company_zip_code',
+            ],
+        ],
+        'expect' => 'spam',
+        'why' => 'Gibberish fields outweigh a single normal sentence.',
+    ],
+    [
+        'label' => 'Gibberish names',
+        'payload' => [
+            'full_name' => 'LlCSEgInkFNufMQ',
+        ],
+        'meta' => [
+            'ip' => '203.0.113.66',
+            'field_handles' => [
+                'full_name'
             ],
         ],
         'expect' => 'spam',

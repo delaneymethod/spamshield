@@ -9,14 +9,12 @@
  * See the LICENSE file in the project root for license details.
  */
 
-declare(strict_types=1);
-
 namespace delaneymethod\spamshield\tests;
 
 use delaneymethod\spamshield\SpamShield;
 use PHPUnit\Framework\TestCase;
 
-final class SpamShieldTest extends TestCase
+class SpamShieldTest extends TestCase
 {
     private SpamShield $spamShield;
 

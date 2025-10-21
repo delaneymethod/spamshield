@@ -9,15 +9,14 @@
  * See the LICENSE file in the project root for license details.
  */
 
-declare(strict_types=1);
-
 namespace delaneymethod\spamshield;
 
-final class SpamShield
+class SpamShield
 {
     private const THRESHOLD = 7; // final spam cutoff
 
     private const MINIMUM_MESSAGE_CHARACTERS = 25;
+
     private const MINIMUM_MESSAGE_WORDS = 4;
 
     private const MAXIMUM_FIELD_LENGTH = 200;
@@ -57,7 +56,7 @@ final class SpamShield
      */
     public function score(array $payload, array $meta = []): array
     {
-        $gibberishKeys = (array) ($meta['gibberish_keys'] ?? []);
+        $fieldHandles = (array) ($meta['field_handles'] ?? []);
         $skipDnsBlockList = (bool) ($meta['skip_dns_block_list'] ?? false);
         $skipMxRecordCheck = (bool) ($meta['skip_mx_record_check'] ?? false);
         $minimumWords = (int) ($meta['minimum_message_words'] ?? self::MINIMUM_MESSAGE_WORDS);
@@ -66,6 +65,8 @@ final class SpamShield
 
         $payload = $this->buildPayloadFromFieldValues($payload);
 
+        $totalPayload = count($payload);
+
         $score = 0;
         $reasons = [];
 
@@ -73,13 +74,13 @@ final class SpamShield
         $gibberishHits = 0;
 
         // If caller explicitly asked for more fields, scan only those (if present)
-        $extraGibberishKeys = array_values(array_filter($gibberishKeys, fn($extraGibberishKey) => is_string($extraGibberishKey) && $extraGibberishKey !== 'message'));
-        foreach ($extraGibberishKeys as $extraGibberishKey) {
-            if (!array_key_exists($extraGibberishKey, $payload)) {
+        $extraFieldHandles = array_values(array_filter($fieldHandles, fn($fieldHandle) => is_string($fieldHandle) && $fieldHandle !== 'message'));
+        foreach ($extraFieldHandles as $extraFieldHandle) {
+            if (!array_key_exists($extraFieldHandle, $payload)) {
                 continue;
             }
 
-            $value = trim($payload[$extraGibberishKey]);
+            $value = trim($payload[$extraFieldHandle]);
             if ($value !== '' && $this->isGibberish($value, $gibberishWordLength)) {
                 $gibberishHits++;
             }
@@ -226,7 +227,13 @@ final class SpamShield
         }
 
         if ($gibberishHits >= 1) {
-            $score += 4;
+            if ($totalPayload === 1) {
+                $score += 7;
+
+                $reasons[] = 'one_field_count';
+            } else {
+                $score += 4;
+            }
 
             $reasons[] = 'gibberish_fields';
         }
