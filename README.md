@@ -60,8 +60,8 @@ Event::on(
                 'first_name',
             ],
             'gibberish_word_length' => 6,
-            'skip_dns_block_list' => true,
-            'skip_mx_record_check' => true,
+            'check_dns_block_lists' => true,
+            'check_mx_record' => true,
             'minimum_message_words' => 5,
             'minimum_message_characters' => 300,
         ];
@@ -94,8 +94,8 @@ $meta = [
         'full_name',
     ],
     'gibberish_word_length' => 6,
-    'skip_dns_block_list' => true,
-    'skip_mx_record_check' => true,
+    'check_dns_block_lists' => true,
+    'check_mx_record' => true,
     'minimum_message_words' => 5,
     'minimum_message_characters' => 300,
 ];
