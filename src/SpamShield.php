@@ -643,7 +643,7 @@ final class SpamShield
             'state_region' => ['state_region', 'stateregion', 'state', 'region', 'county', 'province'],
             'postal_code' => ['postal_code', 'postcode', 'post_code', 'zip', 'zip_code', 'zipcode', 'zippostalcode', 'zip_postal_code', 'zip-postal-code', 'company_zip_code', 'companyzipcode'],
             'country' => ['country'],
-            'message' => ['how_can_we_help', 'how_can_we_help_you', 'commentsquestions', 'comments_questions', 'comments-questions', 'description', 'comments', 'message', 'enquiry', 'inquiry', 'details', 'notes', 'special_instructions', 'additionaldetails', 'question', 'questions', 'scope', 'brief', 'content', 'how_did_you_hear_about_us', 'how-did-you-hear-about-us', 'howdidyouhearaboutus'],
+            'message' => ['how_can_we_help', 'how_can_we_help_you', 'commentsquestions', 'comments_questions', 'comments-questions', 'contact_question', 'description', 'comments', 'message', 'enquiry', 'inquiry', 'details', 'notes', 'special_instructions', 'additionaldetails', 'question', 'questions', 'scope', 'brief', 'content', 'how_did_you_hear_about_us', 'how-did-you-hear-about-us', 'howdidyouhearaboutus'],
             'company_name' => ['company_name', 'company-name', 'company', 'organisation', 'organization', 'org', 'business', 'employer'],
         ];
 
