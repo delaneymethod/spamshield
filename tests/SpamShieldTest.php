@@ -33,6 +33,7 @@ final class SpamShieldTest extends TestCase
             $meta = $fixture['meta'] ?? [];
             $meta['skip_dns_block_list'] = true;
             $meta['skip_mx_record_check'] = true;
+            $meta['gibberish_word_length'] = 6;
 
             $result = $this->spamShield->score($fixture['payload'], $meta);
             $message = $fixture['label'] . ' => ' . \json_encode($result);
@@ -103,22 +104,22 @@ final class SpamShieldTest extends TestCase
     public function testIsGibberish(): void
     {
         // Clear gibberish
-        $this->assertTrue($this->spamShield->isGibberish('QKvVOEdDeiAMgba'));
-        $this->assertTrue($this->spamShield->isGibberish('vzsHrmroxOz'));
+        $this->assertTrue($this->spamShield->isGibberish('QKvVOEdDeiAMgba', 6));
+        $this->assertTrue($this->spamShield->isGibberish('vzsHrmroxOz', 6));
 
         // Human sentence
-        $this->assertFalse($this->spamShield->isGibberish('Please contact me about pricing.'));
+        $this->assertFalse($this->spamShield->isGibberish('Please contact me about pricing.', 6));
 
         // Technical token should not be treated as gibberish
-        $this->assertFalse($this->spamShield->isGibberish('MDSDMDPV'));
+        $this->assertFalse($this->spamShield->isGibberish('MDSDMDPV', 6));
 
         // Human name should be fine
-        $this->assertFalse($this->spamShield->isGibberish('Ben Lee'));
+        $this->assertFalse($this->spamShield->isGibberish('Ben Lee', 6));
     }
 
     public function testGibberishHitsFromValue(): void
     {
-        $hits = $this->spamShield->gibberishHitsFromValue('Hello vzsHrmroxOz please contact QKvVOEdDeiAMgba tomorrow.');
+        $hits = $this->spamShield->gibberishHitsFromValue('Hello vzsHrmroxOz please contact QKvVOEdDeiAMgba tomorrow.', 6);
 
         $this->assertGreaterThanOrEqual(2, $hits);
     }
@@ -130,11 +131,11 @@ final class SpamShieldTest extends TestCase
 
         $this->spamShield->setAllowedValues([]); // brand not allowed yet
 
-        $hitsWithoutAllow = $this->spamShield->gibberishHitsFromValue($text);
+        $hitsWithoutAllow = $this->spamShield->gibberishHitsFromValue($text, 6);
 
         $this->spamShield->setAllowedValues(['MITSUBISHI']); // allow brand; it should be skipped from gibberish checks
 
-        $hitsWithAllow = $this->spamShield->gibberishHitsFromValue($text);
+        $hitsWithAllow = $this->spamShield->gibberishHitsFromValue($text, 6);
 
         // Allowlist should never increase hits; usually drops by at least 0 or 1 depending on heuristics
         $this->assertGreaterThanOrEqual($hitsWithAllow, $hitsWithoutAllow);

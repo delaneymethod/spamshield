@@ -21,9 +21,7 @@ return [
             'custom_field_2' => 'Test 2',
             'custom_field_3' => 'Test 3',
         ],
-        'meta' => [
-            'require_message' => false,
-        ],
+        'meta' => [],
         'expect' => 'ham',
         'why' => 'Looks human.',
     ],
@@ -39,7 +37,6 @@ return [
         ],
         'meta' => [
             'ip' => '198.51.100.25',
-            'require_message' => true,
         ],
         'expect' => 'ham',
         'why' => 'Normal sentences, technical token whitelisted, valid email/phone.',
@@ -56,7 +53,6 @@ return [
         ],
         'meta' => [
             'ip' => '203.0.113.54',
-            'require_message' => true,
         ],
         'expect' => 'ham',
         'why' => 'Looks human, proper UK postcode & phone format.',
@@ -73,7 +69,6 @@ return [
         ],
         'meta' => [
             'ip' => '203.0.113.21',
-            'require_message' => false,
             'minimum_message_characters' => 10,
             'minimum_message_words' => 2,
         ],
@@ -92,7 +87,6 @@ return [
         ],
         'meta' => [
             'ip' => '198.51.100.90',
-            'require_message' => true,
         ],
         'expect' => 'ham',
         'why' => 'Sentence content, corporate domain, valid phone in E.164-ish.',
@@ -109,7 +103,6 @@ return [
         ],
         'meta' => [
             'ip' => '203.0.113.12',
-            'require_message' => true,
         ],
         'expect' => 'ham',
         'why' => 'Short but sentence-like and non-gibberish.',
@@ -136,7 +129,6 @@ return [
         ],
         'meta' => [
             'ip' => '127.0.0.1',
-            'require_message' => true,
         ],
         'expect' => 'ham',
         'why' => 'Loopback with skip_dns_block_list=true should never hit DNS Block List.',
@@ -153,7 +145,6 @@ return [
         ],
         'meta' => [
             'ip' => '203.0.113.31',
-            'require_message' => true,
         ],
         'expect' => 'ham',
         'why' => 'First time should pass.',
@@ -171,7 +162,6 @@ return [
         ],
         'meta' => [
             'ip' => '203.0.113.10',
-            'require_message' => true,
         ],
         'expect' => 'spam',
         'why' => 'Gibberish fields, short/no-sentence, weird zip.',
@@ -188,7 +178,6 @@ return [
         ],
         'meta' => [
             'ip' => '203.0.113.11',
-            'require_message' => true,
         ],
         'expect' => 'spam',
         'why' => 'Repeat email + gibberish should tip score over threshold.',
@@ -205,7 +194,6 @@ return [
         ],
         'meta' => [
             'ip' => '198.51.100.77',
-            'require_message' => true,
         ],
         'expect' => 'spam',
         'why' => 'Spammy domain, nonsense phone, sales pitch link.',
@@ -222,7 +210,6 @@ return [
         ],
         'meta' => [
             'ip' => '203.0.113.60',
-            'require_message' => true,
         ],
         'expect' => 'spam',
         'why' => 'Disposable domain + gibberish + sales language.',
@@ -239,27 +226,9 @@ return [
         ],
         'meta' => [
             'ip' => '198.51.100.40',
-            'require_message' => true,
         ],
         'expect' => 'spam',
         'why' => 'Link + social-engineering text, odd domain.',
-    ],
-    [
-        'label' => 'Empty message on required form',
-        'payload' => [
-            'full_name' => 'James Doe',
-            'email' => 'james@example.com',
-            'phone' => '+1 555 902 8844',
-            'company_name' => 'Example LLC',
-            'company_zip_code' => '10001',
-            'how_can_we_help_you' => '',
-        ],
-        'meta' => [
-            'ip' => '203.0.113.15',
-            'require_message' => true,
-        ],
-        'expect' => 'ham',
-        'why' => 'Empty message with require_message=true should hit empty_message rule.',
     ],
     [
         'label' => 'All-caps random + US phone',
@@ -273,7 +242,6 @@ return [
         ],
         'meta' => [
             'ip' => '203.0.113.16',
-            'require_message' => true,
         ],
         'expect' => 'spam',
         'why' => 'Gibberish + short/no-sentence + weird zip.',
@@ -290,7 +258,6 @@ return [
         ],
         'meta' => [
             'ip' => '203.0.113.19',
-            'require_message' => true,
         ],
         'expect' => 'spam',
         'why' => 'Disposable domain should add enough to push near/over threshold.',
@@ -307,7 +274,6 @@ return [
         ],
         'meta' => [
             'ip' => '203.0.113.200',
-            'require_message' => true,
         ],
         'expect' => 'spam',
         'why' => 'Disposable + nonsense + link spray.',
@@ -324,7 +290,6 @@ return [
         ],
         'meta' => [
             'ip' => '198.51.100.41',
-            'require_message' => true,
         ],
         'expect' => 'spam',
         'why' => 'Bad domain (no MX record), weird characters.',
@@ -341,7 +306,6 @@ return [
         ],
         'meta' => [
             'ip' => '203.0.113.66',
-            'require_message' => true,
             'gibberish_keys' => [
                 'full_name',
                 'email',

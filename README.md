@@ -56,10 +56,18 @@ Event::on(
 
         $meta = [
             'ip' => Craft::$app->getRequest()->getUserIP() ?? '',
-            'gibberish_keys' => [],
+            'gibberish_keys' => ['my_field_handle'],
+            'gibberish_word_length' => 6,
+            'skip_dns_block_list' => true,
+            'skip_mx_record_check' => true,
+            'minimum_message_words' => 5,
+            'minimum_message_characters' => 300,
         ];
 
         $spamShield = new SpamShield();
+        $spamShield->setAllowedValues(['ABB', 'KUKA']);
+        $spamShield->setDnsBlockLists(['zen.spamhaus.org', 'bl.spamcop.net']);
+
         $result = $spamShield->score($payload, $meta);
 
         if ($result['is_spam']) {
@@ -81,6 +89,7 @@ use delaneymethod\spamshield\SpamShield;
 $meta = [
     'ip' => $_SERVER['REMOTE_ADDR'] ?? '',
     'gibberish_keys' => ['my_field_handle'],
+    'gibberish_word_length' => 6,
     'skip_dns_block_list' => true,
     'skip_mx_record_check' => true,
     'minimum_message_words' => 5,

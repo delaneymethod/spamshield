@@ -61,6 +61,7 @@ final class SpamShield
         $skipDnsBlockList = (bool) ($meta['skip_dns_block_list'] ?? false);
         $skipMxRecordCheck = (bool) ($meta['skip_mx_record_check'] ?? false);
         $minimumWords = (int) ($meta['minimum_message_words'] ?? self::MINIMUM_MESSAGE_WORDS);
+        $gibberishWordLength = (int) ($meta['gibberish_word_length'] ?? self::GIBBERISH_WORD_LENGTH);
         $minimumCharacters = (int) ($meta['minimum_message_characters'] ?? self::MINIMUM_MESSAGE_CHARACTERS);
 
         $payload = $this->buildPayloadFromFieldValues($payload);
@@ -79,7 +80,7 @@ final class SpamShield
             }
 
             $value = trim($payload[$extraGibberishKey]);
-            if ($value !== '' && $this->isGibberish($value)) {
+            if ($value !== '' && $this->isGibberish($value, $gibberishWordLength)) {
                 $gibberishHits++;
             }
         }
@@ -182,7 +183,7 @@ final class SpamShield
                 }
             }
 
-            $gibberishHits += $this->gibberishHitsFromValue($message);
+            $gibberishHits += $this->gibberishHitsFromValue($message, $gibberishWordLength);
         }
 
         // Telephone number sanity
@@ -217,7 +218,7 @@ final class SpamShield
             $trimmed = \strtoupper(\preg_replace('/\s+/', '', $postcode));
             $ukOk = \preg_match('/^[A-Z]{1,2}\d[A-Z\d]?\d[A-Z]{2}$/', $trimmed);
 
-            if (! $ukOk && $this->isGibberish($postcode)) {
+            if (! $ukOk && $this->isGibberish($postcode, $gibberishWordLength)) {
                 $score += 2;
 
                 $reasons[] = 'bad_postal_code';
@@ -397,7 +398,7 @@ final class SpamShield
         return false;
     }
 
-    public function isGibberish(string $value): bool
+    public function isGibberish(string $value, int $gibberishWordLength): bool
     {
         $value = \trim($value);
         if ($value === '') {
@@ -425,7 +426,7 @@ final class SpamShield
                 continue;
             }
 
-            if (\mb_strlen($word) < self::GIBBERISH_WORD_LENGTH) {
+            if (\mb_strlen($word) < $gibberishWordLength) {
                 continue;
             }
 
@@ -463,7 +464,7 @@ final class SpamShield
         return $bad >= 2;
     }
 
-    public function gibberishHitsFromValue(string $value, int $takeLongest = 5): int
+    public function gibberishHitsFromValue(string $value, int $gibberishWordLength, int $takeLongest = 5): int
     {
         /** @var array{0: array<int, string>} $matches */
         $matches = [];
@@ -480,7 +481,7 @@ final class SpamShield
                 continue;
             }
 
-            if ($this->isGibberish($w)) {
+            if ($this->isGibberish($w, $gibberishWordLength)) {
                 $hits++;
             }
         }
