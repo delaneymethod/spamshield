@@ -3,7 +3,7 @@
   "description": "Lightweight, pluggable spam scoring for PHP forms. Works with Craft, ExpressionEngine, Laravel, or vanilla PHP.",
   "type": "library",
   "license": "MIT",
-  "keywords": ["spam shield", "spam scoring"],
+  "keywords": ["spam shield", "spam scoring", "gibberish detector"],
   "authors": [
     { "name": "Sean Delaney", "email": "hello@delaneymethod.com" }
   ],

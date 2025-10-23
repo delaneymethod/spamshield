@@ -57,7 +57,7 @@ Event::on(
         $meta = [
             'ip' => Craft::$app->getRequest()->getUserIP() ?? '',
             'field_handles' => [
-                'first_name',
+                'extra_field_handle',
             ],
             'gibberish_word_length' => 6,
             'check_dns_block_lists' => true,
@@ -91,7 +91,7 @@ use delaneymethod\spamshield\SpamShield;
 $meta = [
     'ip' => $_SERVER['REMOTE_ADDR'] ?? '',
     'field_handles' => [
-        'full_name',
+        'extra_field_handle',
     ],
     'gibberish_word_length' => 6,
     'check_dns_block_lists' => true,

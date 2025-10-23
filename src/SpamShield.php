@@ -56,6 +56,9 @@ class SpamShield
      */
     public function score(array $payload, array $meta = []): array
     {
+        // keep the raw submission BEFORE normalization
+        $rawPayload = $payload;
+
         $fieldHandles = (array) ($meta['field_handles'] ?? []);
         $checkMxRecord = (bool) ($meta['check_mx_record'] ?? false);
         $checkDnsBlockLists = (bool) ($meta['check_dns_block_lists'] ?? false);
@@ -63,194 +66,238 @@ class SpamShield
         $gibberishWordLength = (int) ($meta['gibberish_word_length'] ?? self::GIBBERISH_WORD_LENGTH);
         $minimumCharacters = (int) ($meta['minimum_message_characters'] ?? self::MINIMUM_MESSAGE_CHARACTERS);
 
+        // normalize
         $payload = $this->buildPayloadFromFieldValues($payload);
 
         $totalPayload = count($payload);
-
         $score = 0;
         $reasons = [];
-
-        // Gibberish
         $gibberishHits = 0;
 
-        // If caller explicitly asked for more fields, scan only those (if present)
-        $extraFieldHandles = array_values(array_filter($fieldHandles, fn($fieldHandle) => is_string($fieldHandle) && $fieldHandle !== 'message'));
+        $extraFieldHandles = \array_values(\array_filter($fieldHandles, fn ($fieldHandle) => \is_string($fieldHandle) && $fieldHandle !== 'message'));
+
+        $coerce = static function ($value): string {
+            if (\is_array($value)) {
+                $value = \implode(', ', \array_map('strval', \array_filter($value, fn ($x) => $x !== null && $x !== '')));
+            }
+
+            return \trim((string) $value);
+        };
+
         foreach ($extraFieldHandles as $extraFieldHandle) {
-            if (!array_key_exists($extraFieldHandle, $payload)) {
+            if (\array_key_exists($extraFieldHandle, $payload)) {
+                $value = $payload[$extraFieldHandle];
+            } elseif (\array_key_exists($extraFieldHandle, $rawPayload)) {
+                // use the raw input
+                $value = $rawPayload[$extraFieldHandle];
+            } else {
                 continue;
             }
 
-            $value = trim($payload[$extraFieldHandle]);
+            $value = $coerce($value);
             if ($value !== '' && $this->isGibberish($value, $gibberishWordLength)) {
                 $gibberishHits++;
             }
         }
 
-        // Email sanity
+        // Full Name checks
+        $fullName = \trim($payload['full_name'] ?? '');
+        if (!empty($fullName)) {
+            if ($this->isGibberish($fullName, $gibberishWordLength)) {
+                $gibberishHits++;
+
+                $reasons[] = 'full_name_contains_gibberish';
+            }
+        }
+
+        // Email checks
         $email = \trim($payload['email_address'] ?? '');
-        if ($email !== '') {
+        if (!empty($email)) {
             $email = \strtolower($email);
 
-            if (! \filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            if (!\filter_var($email, FILTER_VALIDATE_EMAIL)) {
                 $score += 2;
 
-                $reasons[] = 'bad_email_format';
+                $reasons[] = 'email_address_is_bad_format';
             }
 
-            if ($checkMxRecord && ! $this->emailHasMXRecord($email)) {
+            if ($checkMxRecord && !$this->emailHasMXRecord($email)) {
                 $score += 2;
 
-                $reasons[] = 'no_mx_record';
+                $reasons[] = 'email_address_no_mx_record_found';
             }
 
             if ($this->isDisposable($email)) {
                 $score += 7;
 
-                $reasons[] = 'disposable_email';
+                $reasons[] = 'email_address_is_disposable';
             }
 
             if ($this->suspectTopLevelDomains($email)) {
                 $score += 2;
 
-                $reasons[] = 'suspect_tld';
+                $reasons[] = 'email_address_contains_suspect_tld';
             }
         }
 
-        // Message sanity
-        $message = \trim($payload['message'] ?? '');
-        if ($message !== '') {
-            $messageLength = \mb_strlen($message);
-            $wordCount = \preg_match_all('/\p{L}+/u', $message, $tmp);
+        // Telephone number
+        $telephoneNumber = \trim($payload['telephone_number'] ?? '');
+        if (!empty($telephoneNumber)) {
+            $digits = \preg_replace('/\D+/', '', $telephoneNumber);
 
-            if ($messageLength < $minimumCharacters) {
-                $score += 2;
-
-                $reasons[] = 'short_message';
-            }
-
-            if ($wordCount < $minimumWords) {
-                $score += 1;
-
-                $reasons[] = 'low_word_count';
-            }
-
-            if (! $this->looksLikeASentence($message)) {
-                $score += 1;
-
-                $reasons[] = 'no_sentence_like_content';
-            }
-
-            $urlCount = $this->urlCount($message);
-            $containsSpamTerms = $this->containsSpamTerms($message);
-            $containsPhishTerms = $this->containsAnyPhrase($message, $this->phishingTerms);
-
-            // URLs: keep single-link light, multi-link heavier
-            if ($urlCount >= 1) {
-                $score += 1;
-
-                $reasons[] = 'contains_url';
-            }
-
-            if ($urlCount >= 2) {
-                $score += 1;
-
-                $reasons[] = 'multiple_urls';
-            }
-
-            // Language signals
-            if ($containsSpamTerms) {
-                $score += 2;
-
-                $reasons[] = 'spammy_language';
-
-                // Only nudge combo for spam terms
-                if ($urlCount >= 1) {
-                    $score += 1;
-
-                    $reasons[] = 'spammy_link_combo';
-                }
-            }
-
-            if ($containsPhishTerms) {
-                $score += 5;
-
-                $reasons[] = 'phishing_language';
-
-                // Only nudge combo for phishing terms
-                if ($urlCount >= 1) {
-                    $score += 1;
-
-                    $reasons[] = 'phishing_link_combo';
-                }
-            }
-
-            $gibberishHits += $this->gibberishHitsFromValue($message, $gibberishWordLength);
-        }
-
-        // Telephone number sanity
-        $phone = \trim($payload['telephone_number'] ?? '');
-        if ($phone !== '') {
-            $digits = \preg_replace('/\D+/', '', $phone);
             $isUS = (bool) \preg_match('/^(1)?\d{10}$/', $digits);
             $isUK = (bool) \preg_match('/^(44)?7\d{9}$|^07\d{9}$/', $digits);
 
             if (! ($isUS || $isUK)) {
                 $score += 2;
 
-                $reasons[] = 'invalid_telephone_number';
+                $reasons[] = 'telephone_number_is_invalid';
             }
 
-            if ($this->obviouslyFakePhone($phone)) {
+            if ($this->isFakeTelephoneNumber($telephoneNumber)) {
                 $score += 2;
 
-                $reasons[] = 'fake_phone_pattern';
+                $reasons[] = 'telephone_number_is_fake';
             }
         }
 
-        // Postal code sanity (UK-ish heuristic)
-        $postcode = \trim($payload['postal_code'] ?? '');
-        if ($postcode !== '') {
-            if (\mb_strlen($postcode) > self::MAXIMUM_FIELD_LENGTH) {
+        // Postal code
+        $postalCode = \trim($payload['postal_code'] ?? '');
+        if (!empty($postalCode)) {
+            if (\mb_strlen($postalCode) > self::MAXIMUM_FIELD_LENGTH) {
                 $score += 1;
 
-                $reasons[] = 'field_too_long';
+                $reasons[] = 'postal_code_is_too_long';
             }
 
-            $trimmed = \strtoupper(\preg_replace('/\s+/', '', $postcode));
-            $ukOk = \preg_match('/^[A-Z]{1,2}\d[A-Z\d]?\d[A-Z]{2}$/', $trimmed);
+            if (!$this->isValidPostalCode($postalCode)) {
+                // Only push harder if it also looks like gibberish (keeps false positives down)
+                if ($this->isGibberish($postalCode, $gibberishWordLength)) {
+                    $score += 2;
 
-            if (! $ukOk && $this->isGibberish($postcode, $gibberishWordLength)) {
+                    $reasons[] = 'postal_code_contains_gibberish';
+                } else {
+                    // Soft nudge for unrecognized format that isn’t gibberish
+                    $score += 1;
+
+                    $reasons[] = 'postal_code_contains_unknown_format';
+                }
+            }
+        }
+
+        // Company Name
+        $companyName = \trim($payload['company_name'] ?? '');
+        if (!empty($companyName)) {
+            if ($this->isGibberish($companyName, $gibberishWordLength)) {
+                $gibberishHits++;
+
+                $reasons[] = 'company_name_contains_gibberish';
+            }
+        }
+
+        // Message
+        $message = \trim($payload['message'] ?? '');
+        if (!empty($message)) {
+            $messageLength = \mb_strlen($message);
+            if ($messageLength < $minimumCharacters) {
                 $score += 2;
 
-                $reasons[] = 'bad_postal_code';
+                $reasons[] = 'message_is_to_short';
             }
+
+            $wordCount = \preg_match_all('/\p{L}+/u', $message, $matches);
+            if ($wordCount < $minimumWords) {
+                $score += 1;
+
+                $reasons[] = 'message_has_low_word_count';
+            }
+
+            if (!$this->looksLikeASentence($message)) {
+                $score += 1;
+
+                $reasons[] = 'message_has_no_sentence_like_content';
+            }
+
+            $urlCount = $this->urlCount($message);
+            $containsSpamTerms = $this->containsSpamTerms($message);
+            $containsPhishTerms = $this->containsPhishingTerms($message);
+
+            // URLs: keep single-link light, multi-link heavier
+            if ($urlCount >= 1) {
+                $score += 1;
+
+                $reasons[] = 'message_contains_url';
+            }
+
+            if ($urlCount >= 2) {
+                $score += 1;
+
+                $reasons[] = 'message_contains_multiple_urls';
+            }
+
+            // Language signals
+            if ($containsSpamTerms) {
+                $score += 2;
+
+                $reasons[] = 'message_contains_spammy_language';
+
+                // Only nudge combo for spam terms
+                if ($urlCount >= 1) {
+                    $score += 1;
+
+                    $reasons[] = 'message_contains_spammy_link_combo';
+                }
+            }
+
+            if ($containsPhishTerms) {
+                $score += 5;
+
+                $reasons[] = 'message_contains_phishing_language';
+
+                // Only nudge combo for phishing terms
+                if ($urlCount >= 1) {
+                    $score += 1;
+
+                    $reasons[] = 'message_contains_phishing_link_combo';
+                }
+            }
+
+            $gibberishHits += $this->gibberishHitsFromValue($message, $gibberishWordLength);
         }
 
         if ($gibberishHits >= 1) {
             if ($totalPayload === 1) {
                 $score += 7;
-
-                $reasons[] = 'one_field_count';
             } else {
                 $score += 4;
             }
 
-            $reasons[] = 'gibberish_fields';
+            $reasons[] = 'gibberish_one_field_found';
         }
 
         if ($gibberishHits >= 2) {
             $score += 7;
 
-            $reasons[] = 'multiple_gibberish_fields';
+            $reasons[] = 'gibberish_multiple_fields_found';
         }
 
-        // DNS Block List
+        // IP address
         $ip = \trim($meta['ip'] ?? '');
-        if ($ip !== '' && $checkDnsBlockLists && $this->listedOnDnsBlockList($ip)) {
+        if (!empty($ip) && $checkDnsBlockLists && $this->listedOnDnsBlockList($ip)) {
             $score += 2;
 
-            $reasons[] = 'dns_blocklist_listed';
+            $reasons[] = 'ip_is_listed_on_dns_block_list';
         }
+
+        /*
+        print_r([
+            '$meta' => $meta,
+            '$payload' => $payload,
+            'score' => $score,
+            'reasons' => $reasons,
+            'is_spam' => $score >= self::THRESHOLD,
+        ]);
+        */
 
         return [
             'ip' => $ip,
@@ -265,7 +312,7 @@ class SpamShield
      */
     public function setAllowedValues(array $allowedValues): void
     {
-        $this->allowedValues = $allowedValues;
+        $this->allowedValues = array_unique(array_merge($this->allowedValues, $allowedValues));
     }
 
     /**
@@ -292,27 +339,34 @@ class SpamShield
         return $this->dnsBlockLists;
     }
 
+    public function normalize(string $value): string
+    {
+        $value = \mb_strtolower($value);
+        $value = \preg_replace('/\s+/u', ' ', $value);
+        $value = \preg_replace('/[^a-z0-9\s]/u', '', $value);
+
+        return \trim($value);
+    }
+
     public function urlCount(string $value): int
     {
         /** @var array{0: array<int, string>} $matches */
         $matches = [];
+
         \preg_match_all('~https?://\S+|www\.\S+~i', $value, $matches);
 
         return \count($matches[0]); // offset 0 always set by preg_match_all
     }
 
-    /**
-     * @param array<int, string> $phrases
-     */
-    public function containsAnyPhrase(string $value, array $phrases): bool
+    public function containsPhishingTerms(string $value): bool
     {
         $value = \mb_strtolower($value);
 
-        foreach ($phrases as $phrase) {
-            $phrase = \mb_strtolower($phrase);
+        foreach ($this->phishingTerms as $phishingTerm) {
+            $phishingTerm = \mb_strtolower($phishingTerm);
 
             // Match the full phrase with non-letter boundaries on both sides
-            $pattern = '~(?<!\p{L})' . \preg_quote($phrase, '~') . '(?!\p{L})~u';
+            $pattern = '~(?<!\p{L})' . \preg_quote($phishingTerm, '~') . '(?!\p{L})~u';
             if (\preg_match($pattern, $value)) {
                 return true;
             }
@@ -342,23 +396,23 @@ class SpamShield
         }
 
         $domain = \strtolower(\substr($email, $at + 1));
-        if ($domain === '') {
+        if (empty($domain)) {
             return false;
         }
 
         $parts = \explode('.', $domain); // array<int,string>
         $tld = \end($parts);
-        if ($tld == false) {
+        if (!$tld) {
             return false;
         }
 
         return \in_array($tld, $this->suspectTopLevelDomains, true);
     }
 
-    public function obviouslyFakePhone(string $raw): bool
+    public function isFakeTelephoneNumber(string $raw): bool
     {
         $digits = \preg_replace('/\D+/', '', $raw);
-        if ($digits === '') {
+        if (empty($digits)) {
             return false;
         }
 
@@ -377,15 +431,6 @@ class SpamShield
         }
 
         return false;
-    }
-
-    public function normalize(string $value): string
-    {
-        $value = \mb_strtolower($value);
-        $value = \preg_replace('/\s+/u', ' ', $value);
-        $value = \preg_replace('/[^a-z0-9\s]/u', '', $value);
-
-        return \trim($value);
     }
 
     public function isTechnicalValue(string $value): bool
@@ -408,7 +453,7 @@ class SpamShield
     public function isGibberish(string $value, int $gibberishWordLength): bool
     {
         $value = \trim($value);
-        if ($value === '') {
+        if (empty($value)) {
             return false;
         }
 
@@ -428,6 +473,11 @@ class SpamShield
                 continue;
             }
 
+            // Skip bare protocol-ish tokens
+            if (\preg_match('/^(?:http|https|www)$/i', $word)) {
+                continue;
+            }
+
             // Only analyze Latin-script words; skip if any non-Latin chars present
             if (!\preg_match('/^\p{Latin}+$/u', \preg_replace('/[^[:alpha:]]/u', '', $word))) {
                 continue;
@@ -442,7 +492,7 @@ class SpamShield
             }
 
             $letters = \preg_replace('/[^A-Za-z]/u', '', $word);
-            if ($letters === '') {
+            if (empty($letters)) {
                 continue;
             }
 
@@ -473,9 +523,12 @@ class SpamShield
 
     public function gibberishHitsFromValue(string $value, int $gibberishWordLength, int $takeLongest = 5): int
     {
+        // Remove URLs & emails up front so tokens like "https" never get considered
+        $cleanedValue = \preg_replace('~https?://\S+|www\.\S+|\S+@\S+~iu', ' ', $value) ?? $value;
+
         /** @var array{0: array<int, string>} $matches */
         $matches = [];
-        \preg_match_all('/\p{L}{4,}/u', $value, $matches);
+        \preg_match_all('/\p{L}{4,}/u', $cleanedValue, $matches);
         $words = $matches[0];
 
         \usort($words, static fn (string $a, string $b): int => \mb_strlen($b) <=> \mb_strlen($a));
@@ -483,12 +536,12 @@ class SpamShield
 
         $hits = 0;
 
-        foreach ($words as $w) {
-            if ($this->isTechnicalValue($w)) {
+        foreach ($words as $word) {
+            if ($this->isTechnicalValue($word)) {
                 continue;
             }
 
-            if ($this->isGibberish($w, $gibberishWordLength)) {
+            if ($this->isGibberish($word, $gibberishWordLength)) {
                 $hits++;
             }
         }
@@ -498,11 +551,11 @@ class SpamShield
 
     public function looksLikeASentence(string $value): bool
     {
-        if (! \preg_match('/\s/u', $value)) {
+        if (!\preg_match('/\s/u', $value)) {
             return false;
         }
 
-        if (! \preg_match('/[aeiouAEIOU]/u', $value)) {
+        if (!\preg_match('/[aeiouAEIOU]/u', $value)) {
             return false;
         }
 
@@ -521,18 +574,18 @@ class SpamShield
             return 0.0;
         }
 
-        $freq = [];
+        $frequency = [];
 
         for ($i = 0; $i < $length; $i++) {
-            $ch = \mb_substr($value, $i, 1);
+            $character = \mb_substr($value, $i, 1);
 
-            $freq[$ch] = ($freq[$ch] ?? 0) + 1;
+            $frequency[$character] = ($frequency[$character] ?? 0) + 1;
         }
 
         $H = 0.0;
 
-        foreach ($freq as $c) {
-            $p = $c / $length;
+        foreach ($frequency as $character) {
+            $p = $character / $length;
             $H -= $p * \log($p, 2);
         }
 
@@ -622,6 +675,40 @@ class SpamShield
         }
 
         return false;
+    }
+
+    public function isValidPostalCode(string $postalCode): bool
+    {
+        $postalCode = \trim($postalCode);
+        if (empty($postalCode)) {
+            return false;
+        }
+
+        if ($this->isValidUsPostalCode($postalCode)) {
+            return true;
+        }
+
+        if ($this->isValidUkPostalCode($postalCode)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    public function isValidUsPostalCode(string $postalCode): bool
+    {
+        // 12345 or 12345-6789
+        return (bool) \preg_match('/^\d{5}(?:-\d{4})?$/', $postalCode);
+    }
+
+    public function isValidUkPostalCode(string $postalCode): bool
+    {
+        $postalCode = \strtoupper(\preg_replace('/\s+/', '', $postalCode));
+
+        // Standard UK postcode patterns are GIR 0AA, BFPO etc
+        $ukPattern = '/^(GIR0AA)|((([A-Z]{1,2}\d{1,2})|([A-Z]{1,2}\d[A-Z]))\d[A-Z]{2})$/';
+
+        return (bool) \preg_match($ukPattern, $postalCode);
     }
 
     /**

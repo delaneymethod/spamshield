@@ -31,7 +31,7 @@ class SpamShieldTest extends TestCase
             $meta = $fixture['meta'] ?? [];
             $meta['check_dns_block_lists'] = false;
             $meta['check_mx_record'] = false;
-            $meta['gibberish_word_length'] = 6;
+            $meta['gibberish_word_length'] = 3;
 
             $result = $this->spamShield->score($fixture['payload'], $meta);
             $message = $fixture['label'] . ' => ' . \json_encode($result);
@@ -238,17 +238,17 @@ class SpamShieldTest extends TestCase
         $this->assertFalse($this->spamShield->listedOnDnsBlockList('::1'));
     }
 
-    public function testObviouslyFakePhone(): void
+    public function testIsFakeTelephoneNumber(): void
     {
-        $this->assertTrue($this->spamShield->obviouslyFakePhone('0000000000'));
-        $this->assertTrue($this->spamShield->obviouslyFakePhone('1111111111'));
-        $this->assertTrue($this->spamShield->obviouslyFakePhone('0000000000'));
-        $this->assertTrue($this->spamShield->obviouslyFakePhone('1111111111'));
-        $this->assertTrue($this->spamShield->obviouslyFakePhone('5550000000'));
+        $this->assertTrue($this->spamShield->isFakeTelephoneNumber('0000000000'));
+        $this->assertTrue($this->spamShield->isFakeTelephoneNumber('1111111111'));
+        $this->assertTrue($this->spamShield->isFakeTelephoneNumber('0000000000'));
+        $this->assertTrue($this->spamShield->isFakeTelephoneNumber('1111111111'));
+        $this->assertTrue($this->spamShield->isFakeTelephoneNumber('5550000000'));
 
-        $this->assertFalse($this->spamShield->obviouslyFakePhone('+1 407 555 8822'));
-        $this->assertFalse($this->spamShield->obviouslyFakePhone('+1 (407) 555-8822'));
-        $this->assertFalse($this->spamShield->obviouslyFakePhone('07400111222'));
+        $this->assertFalse($this->spamShield->isFakeTelephoneNumber('+1 407 555 8822'));
+        $this->assertFalse($this->spamShield->isFakeTelephoneNumber('+1 (407) 555-8822'));
+        $this->assertFalse($this->spamShield->isFakeTelephoneNumber('07400111222'));
     }
 
     public function testSuspectTopLevelDomains(): void
@@ -260,17 +260,9 @@ class SpamShieldTest extends TestCase
 
     public function testContainsPhishingTerms(): void
     {
-        $this->assertTrue(
-            $this->spamShield->containsAnyPhrase('Please verify your account at http://x.y/verify', [
-                'verify your account','password reset',
-            ]),
-        );
+        $this->assertTrue($this->spamShield->containsPhishingTerms('Please verify your account at http://x.y/verify'));
 
-        $this->assertFalse(
-            $this->spamShield->containsAnyPhrase('Schedule a call next week about pricing.', [
-                'verify your account','password reset',
-            ]),
-        );
+        $this->assertFalse($this->spamShield->containsPhishingTerms('Schedule a call next week about pricing.'));
 
         $result = $this->spamShield->score([
             'full_name' => 'IT Support',
@@ -281,7 +273,7 @@ class SpamShieldTest extends TestCase
             'check_dns_block_lists' => false,
         ]);
 
-        $this->assertContains('phishing_language', $result['reasons']);
+        $this->assertContains('message_contains_phishing_language', $result['reasons']);
         $this->assertTrue($result['is_spam']);
     }
 
@@ -299,5 +291,32 @@ class SpamShieldTest extends TestCase
         $this->assertSame(0, $this->spamShield->urlCount('No links here.'));
         $this->assertSame(1, $this->spamShield->urlCount('See https://example.org.'));
         $this->assertSame(2, $this->spamShield->urlCount('Go to http://a.test and also www.b.test now.'));
+    }
+
+    public function testIsValidUsPostalCode(): void
+    {
+        $this->assertFalse($this->spamShield->isValidUsPostalCode('1234')); // too short
+        $this->assertFalse($this->spamShield->isValidUsPostalCode('123456')); // too long
+        $this->assertFalse($this->spamShield->isValidUsPostalCode('12345-678')); // ZIP+4 too short
+        $this->assertFalse($this->spamShield->isValidUsPostalCode('12345-67890')); // ZIP+4 too long
+        $this->assertFalse($this->spamShield->isValidUsPostalCode('12A45')); // contains a letter
+        $this->assertFalse($this->spamShield->isValidUsPostalCode('1234-5678')); // dash in wrong place
+        $this->assertFalse($this->spamShield->isValidUsPostalCode('12345-ABCD')); // ZIP+4 has letters
+        $this->assertFalse($this->spamShield->isValidUsPostalCode('123 45')); // space not allowed
+    }
+
+    public function testIsValidUkPostalCode(): void
+    {
+        $this->assertTrue($this->spamShield->isValidUkPostalCode('E C1A 1AA'));
+        $this->assertTrue($this->spamShield->isValidUkPostalCode('EC1A1AA'));
+        $this->assertTrue($this->spamShield->isValidUkPostalCode('SW1A1AA'));
+
+        $this->assertFalse($this->spamShield->isValidUkPostalCode('SW1A 1A')); // inward part too short
+        $this->assertFalse($this->spamShield->isValidUkPostalCode('SW1 1AAA')); // inward part too long
+        $this->assertFalse($this->spamShield->isValidUkPostalCode('1SW 1AA')); // cannot start with a digit
+        $this->assertFalse($this->spamShield->isValidUkPostalCode('SW-1A 1AA')); // illegal character (-) in outward part
+        $this->assertFalse($this->spamShield->isValidUkPostalCode('ABC 123')); // inward must be digit + two letters, not three digits
+        $this->assertFalse($this->spamShield->isValidUkPostalCode('EC1A 11A')); // inward has two digits; should be one digit + two letters
+        $this->assertFalse($this->spamShield->isValidUkPostalCode('EC1A 1ÄA')); // non-ASCII letter in inward part
     }
 }
