@@ -5,4 +5,23 @@
             <directory>tests</directory>
         </testsuite>
     </testsuites>
+    <coverage cacheDirectory=".phpunit-cache/coverage">
+        <include>
+            <directory suffix=".php">src</directory>
+        </include>
+        <exclude>
+            <directory>vendor</directory>
+            <directory>tests</directory>
+            <directory>build</directory>
+        </exclude>
+        <report>
+            <text outputFile="build/coverage/coverage.txt" showOnlySummary="false"/>
+            <clover outputFile="build/coverage/coverage.xml"/>
+            <html outputDirectory="build/coverage/html" lowUpperBound="50" highLowerBound="80"/>
+        </report>
+    </coverage>
+
+    <logging>
+        <junit outputFile="build/junit.xml"/>
+    </logging>
 </phpunit>

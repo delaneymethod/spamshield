@@ -7,11 +7,18 @@ $finder = (new PhpCsFixer\Finder())
     ->ignoreVCS(true);
 
 return (new PhpCsFixer\Config())
+    ->setParallelConfig(\PhpCsFixer\Runner\Parallel\ParallelConfigFactory::detect())
     ->setRiskyAllowed(true)
     ->setFinder($finder)
+    ->setCacheFile(__DIR__ . '/.php-cs-fixer.cache')
     ->setRules([
         '@PSR12' => true,
+        '@Symfony' => true,
+        '@Symfony:risky' => true,
+        '@PHP80Migration' => true,
         '@PHP8x0Migration:risky' => true,
+        '@PhpCsFixer' => true,
+        'array_indentation' => true,
         'array_syntax' => ['syntax' => 'short'],
         'binary_operator_spaces' => [
             'default' => 'single_space',
@@ -20,6 +27,14 @@ return (new PhpCsFixer\Config())
                 '=>' => 'single_space',
             ],
         ],
+        'protected_to_private' => false,
+        'combine_nested_dirname' => true,
+        'linebreak_after_opening_tag' => true,
+        'list_syntax' => ['syntax' => 'short'],
+        'single_trait_insert_per_statement' => true,
+        'ternary_to_null_coalescing' => true,
+        'multiline_whitespace_before_semicolons' => ['strategy' => 'new_line_for_chained_calls'],
+        'php_unit_internal_class' => false,
         'blank_line_before_statement' => ['statements' => ['return', 'try', 'if', 'for', 'foreach', 'while']],
         'combine_consecutive_unsets' => true,
         'declare_strict_types' => false, // flip to true if you enable strict_types

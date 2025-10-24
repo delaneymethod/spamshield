@@ -16,6 +16,10 @@
         <severity>0</severity>
     </rule>
 
+    <rule ref="Squiz.ControlStructures.ControlSignature.SpaceAfterCloseBrace">
+        <severity>0</severity>
+    </rule>
+
     <rule ref="Squiz.Functions.MultiLineFunctionDeclaration"/>
     <rule ref="Squiz.WhiteSpace.FunctionSpacing">
         <properties>

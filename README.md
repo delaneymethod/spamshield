@@ -56,10 +56,7 @@ Event::on(
 
         $meta = [
             'ip' => Craft::$app->getRequest()->getUserIP() ?? '',
-            'field_handles' => [
-                'extra_field_handle',
-            ],
-            'gibberish_word_length' => 6,
+            'gibberish_word_minimum_length' => 6,
             'check_dns_block_lists' => true,
             'check_mx_record' => true,
             'minimum_message_words' => 5,
@@ -67,7 +64,7 @@ Event::on(
         ];
 
         $spamShield = new SpamShield();
-        $spamShield->setAllowedValues(['ABB', 'KUKA']);
+        $spamShield->setAllowedTerms(['ABB', 'KUKA']);
         $spamShield->setDnsBlockLists(['zen.spamhaus.org', 'bl.spamcop.net']);
 
         $result = $spamShield->score($payload, $meta);
@@ -90,10 +87,7 @@ use delaneymethod\spamshield\SpamShield;
 
 $meta = [
     'ip' => $_SERVER['REMOTE_ADDR'] ?? '',
-    'field_handles' => [
-        'extra_field_handle',
-    ],
-    'gibberish_word_length' => 6,
+    'gibberish_word_minimum_length' => 6,
     'check_dns_block_lists' => true,
     'check_mx_record' => true,
     'minimum_message_words' => 5,
@@ -101,7 +95,7 @@ $meta = [
 ];
 
 $spamShield = new SpamShield();
-$spamShield->setAllowedValues(['ABB', 'KUKA']);
+$spamShield->setAllowedTerms(['ABB', 'KUKA']);
 $spamShield->setDnsBlockLists(['zen.spamhaus.org', 'bl.spamcop.net']);
 
 $result = $spamShield->score($_POST, $meta);
