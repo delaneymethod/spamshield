@@ -1,5 +1,7 @@
 <?php
 
+use PhpCsFixer\Runner\Parallel\ParallelConfigFactory;
+
 $finder = (new PhpCsFixer\Finder())
     ->in([__DIR__.'/src', __DIR__.'/tests'])
     ->name('*.php')
@@ -7,7 +9,7 @@ $finder = (new PhpCsFixer\Finder())
     ->ignoreVCS(true);
 
 return (new PhpCsFixer\Config())
-    ->setParallelConfig(\PhpCsFixer\Runner\Parallel\ParallelConfigFactory::detect())
+    ->setParallelConfig(ParallelConfigFactory::detect())
     ->setRiskyAllowed(true)
     ->setFinder($finder)
     ->setCacheFile(__DIR__ . '/.php-cs-fixer.cache')
