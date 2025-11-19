@@ -216,6 +216,11 @@ class GibberishHelper
                 continue;
             }
 
+            // Skip known machine-generated IDs
+            if (self::isMachineToken($word)) {
+                continue;
+            }
+
             if (self::isAllowedTerm($word, $combinedAllowedTerms)) {
                 continue;
             }
@@ -496,6 +501,44 @@ class GibberishHelper
     {
         // For long values, treat 'y' as a vowel to avoid false positives like "industry's", "synchrony"
         return $length >= 6 ? 'aeiouy' : 'aeiou';
+    }
+
+    public static function isMachineToken(string $value): bool
+    {
+        $patterns = [
+            // Stripe PaymentIntent
+            '/^pi_[A-Za-z0-9]{10,}$/',
+
+            // Stripe SetupIntent
+            '/^seti_[A-Za-z0-9]{10,}$/',
+
+            // Stripe PaymentMethod
+            '/^pm_[A-Za-z0-9]{10,}$/',
+
+            // Stripe Charge
+            '/^ch_[A-Za-z0-9]{10,}$/',
+
+            // Stripe Customer
+            '/^cus_[A-Za-z0-9]{8,}$/',
+
+            // Stripe Subscription
+            '/^sub_[A-Za-z0-9]{8,}$/',
+
+            // Stripe Checkout Session (test/live)
+            '/^cs_test_[A-Za-z0-9]{10,}$/',
+            '/^cs_live_[A-Za-z0-9]{10,}$/',
+
+            // Generic long token starting with "pi-" instead of "pi_"
+            '/^pi-[A-Za-z0-9]{10,}$/',
+        ];
+
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $value)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

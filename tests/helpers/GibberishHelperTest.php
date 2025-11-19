@@ -62,6 +62,60 @@ class GibberishHelperTest extends TestCase
             // --- Readable English (should PASS) ---
             [
                 'payload' => [
+                    'value' => 'pi_3SVBCjLq5OIjGegH0SMysLbv',
+                ],
+                'contains_gibberish' => false,
+            ],
+            [
+                'payload' => [
+                    'value' => 'seti_3SVBCjLq5OIjGegH0SMysLbv',
+                ],
+                'contains_gibberish' => false,
+            ],
+            [
+                'payload' => [
+                    'value' => 'pm_3SVBCjLq5OIjGegH0SMysLbv',
+                ],
+                'contains_gibberish' => false,
+            ],
+            [
+                'payload' => [
+                    'value' => 'ch_3SVBCjLq5OIjGegH0SMysLbv',
+                ],
+                'contains_gibberish' => false,
+            ],
+            [
+                'payload' => [
+                    'value' => 'cus_3SVBCjLq5OIjGegH0SMysLbv',
+                ],
+                'contains_gibberish' => false,
+            ],
+            [
+                'payload' => [
+                    'value' => 'sub_3SVBCjLq5OIjGegH0SMysLbv',
+                ],
+                'contains_gibberish' => false,
+            ],
+            [
+                'payload' => [
+                    'value' => 'cs_test_3SVBCjLq5OIjGegH0SMysLbv',
+                ],
+                'contains_gibberish' => false,
+            ],
+            [
+                'payload' => [
+                    'value' => 'cs_live_3SVBCjLq5OIjGegH0SMysLbv',
+                ],
+                'contains_gibberish' => false,
+            ],
+            [
+                'payload' => [
+                    'value' => 'pi-3SVBCjLq5OIjGegH0SMysLbv',
+                ],
+                'contains_gibberish' => false,
+            ],
+            [
+                'payload' => [
                     'state' => 'ny',
                 ],
                 'contains_gibberish' => false,
